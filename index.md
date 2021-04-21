@@ -2,7 +2,7 @@
 
 **-----------------------------------------------------------------------------------------------------------**
 
-[This](https://bu-ie-360.github.io/spring21-mfdevecii/files/HW1/Homework1.html) is my page.
+[This](https://bu-ie-360.github.io/spring21-mfdevecii/) is my page.
 
 ## Homework 0
   
