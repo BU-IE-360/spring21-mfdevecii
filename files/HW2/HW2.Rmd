@@ -1,0 +1,259 @@
+---
+title: "Forecasting Study of House Sales"
+output: html_document
+---
+
+
+## Introduction
+
+  In this study, a specific relation will be analysed which is between first hand house sales and some regressors such as economic situation of households and interest rates of housing credits. Then, useful data (from 01.2016 to 03.2021) will be utilized in linear regression analysis so that the forecast for the sale quantity of 04-2021 will be performed. In addition, visual analysis will be used in each step to enhance the arguments and interpret the results in an easier way. Data used in this work could be reached (here)[https://evds2.tcmb.gov.tr/]
+
+## Preparation of the Data
+
+  In this step, data is prepared to use and 3 aspects have been changed as time series objects for the purpose of having better interpretation. These 3 aspects are quantity of house sales, interest rates of housing credits and the results of the survey for the economic situation of households in Turkey.
+  
+```{r message=FALSE, warning=FALSE }
+
+library(readxl)
+library(fpp)
+library(ggplot2)
+library(data.table)
+frame=read_excel("C:/Users/mfdevecii/Desktop/Sales.xlsx")
+mytable=as.data.table(frame)
+sales=ts(mytable$`House_Sales`, frequency = 12, start=c(2016,1) )
+interest=ts(mytable$`Interest`, frequency = 12, start=c(2016,1) )
+econ=ts(mytable$`Economy`, frequency = 12, start=c(2016,1) )
+
+```
+
+## Preliminary Visualisation and Interpretation
+
+# House Sales
+
+The quantities of the sale as first hand is below:
+
+```{r echo=FALSE}
+plot(sales, xlab="Time", ylab="Sales", main="Monthly House Sales")
+```
+
+  As it is seen, sales have a tendency to increase even if it decreases unexpectedly around 04-2020 and 05-2020. So, trend should be included into model. However, its variance seems unstable due to the points after 2020. In order to gain a more stable variance, getting log of the values is tried but it did not help a lot, as it is seen below, variance is even more nonstable.
+  
+```{r echo=FALSE}
+plot(log(sales))
+```
+  
+  As an alternative idea, the deterioration around 2020 must be examined. After some research, it could be said that Covid-19 has appeared in Turkey after 03-2020. Hence, citizens felt in chaos and did not have tendency to buy a new house. The effects of covid-19 should be smoothed. In order to smooth the sudden decrease of sales, model will be built after some operations, which are having the mean of previous years for the same months and assign those numbers to  04-2020 and 05-2020. Before going into these operations, trend and month columns is added into model to make each operations easier and interpret the time series.
+
+```{r message=FALSE, warning=FALSE}
+mytable[,trend:=1:.N] # Trend is added into model also for making operations easier.
+month=1:12
+mytable=cbind(mytable,month)
+```
+
+Now that it is easier to perform smoothing, operation could be done this way:
+
+```{r Covid-19}
+mytable[trend %between% c(52,53),is_covid:=1] # Checks months that covid-19 has huge impact
+mytable[is.na(is_covid)==TRUE, is_covid:=0]   # Checks usual months
+count1=0;
+count2=0
+for(i in 1:63) {
+  if(mytable[i,7]==0 & mytable[i,6]==4){
+    count1=count1+mytable[i,2]
+  }
+}
+for(i in 1:63) {
+  if(mytable[i,7]==0 & mytable[i,6]==5){
+    count2=count2+mytable[i,2]
+  }
+}
+count1=count1/4  # Mean of previous 4 years
+count2=count2/4  # Mean of previous 4 years
+mytable[52,2]=count1  #Assignment
+mytable[53,2]=count2  #Assignment
+sales=ts(mytable$`House_Sales`, frequency = 12, start=c(2016,1) ) # Retrieve the time series version
+```
+
+```{r echo=FALSE}
+plot(sales, xlab="Time", ylab="Sales", main="Monthly House Sales")
+
+```
+
+  Furthermore, model is still not ready to be used in linear regression because of the decrease in the period after 01-2021. According to (chairman of INDER)[https://www.emlakgundemi.com.tr/gundem/konut-satislarindaki-dususun-sebepleri-neler-h21385.html], %34 decrease in the sales stems from weekend restrictions. Due to not having restrictions anymore, model has to be changed on that period. I.E, unexpected decreases must be smoothed by assuming restrictions were did not taken so that forecast for 04-2021 makes more sense.
+```{r}
+mytable[61,2]=1.34*mytable[61,2]  #Assignment for 01-2021
+mytable[62,2]=1.34*mytable[62,2]  #Assignment for 02-2021
+mytable[63,2]=1.34*mytable[63,2]  #Assignment for 03-2021
+sales=ts(mytable$`House_Sales`, frequency = 12, start=c(2016,1) ) 
+plot(sales)
+```
+ 
+  As it is clearly seen, variance is more stable now. 
+  
+# Interest Rates
+
+The rates of the interest for housing credits are below:
+
+```{r echo=FALSE}
+plot(interest, xlab="Time", ylab="Interest Rates", main="Monthly Interest Rates")
+```
+
+
+# Economic Situation of Households
+
+The result of the survey which reflects economic situation and expectation of people in Turkey is below:
+
+```{r echo=FALSE}
+plot(econ, xlab="Time", ylab="Wealth", main="Result of Surveys")
+```
+
+## Creation of Regression Model
+
+Linear regressions will be implemented consecutively in 4 steps so final regression model will be obtained. 
+
+# Step 1
+
+In step 1, only trend is added as independent variable.
+
+```{r}
+fit1 = lm(House_Sales~trend, data = mytable)
+summary(fit1)
+checkresiduals(fit1,lag=12)
+```
+
+To interpret, R-squared and Adjusted R-squared values are really low. Autocorellation is quite low but model still needs to be enhanced because of low R-square values and violated normality assumption of residuals.
+
+# Step 2
+
+In order to increase R-squared values and get more decent residuals, month variable is added into the system.
+
+```{r}
+fit2 = lm(House_Sales~trend+as.factor(month), data = mytable)
+summary(fit2)
+checkresiduals(fit2,lag=12)
+```
+
+To interpret, R-squared and Adjusted R-squared values increased. However, autocorellation has increased too. The model in this step needs to be improved because Breusch-Godfrey test tells there is autocorrelation (low p-value).
+
+# Step 3
+
+In this step, 2 indicators having possibility to affect sale quantities are added into model. Interest rates and economic indicator of citizens have changed graphs and improved the model in a good way.
+
+```{r}
+fit3 = lm(House_Sales~trend+as.factor(month)+Interest+Economy, data = mytable)
+summary(fit3)
+checkresiduals(fit3,lag=12)
+```
+
+Now that new independent variables are added, autocorrelation has changed as it is expected. Autocorrelation lower in this step but it still exist if alpha value is taken as 0.05. Moreover, the model has less residual standard error and higher R-squared values, which means model has been sophisticated. But as the last step, it is needed to find residual autocorrelation where it stands at most. So the code below is used:
+
+```{r}
+acf(residuals(fit3))
+```
+
+As it is seen, residuals need to be arrenged by lag1 or lag 12 but in this model lag1 gives the best result in terms of having better parameters (higher R-squared values, lower residual standard errors and fitting more to normality assumption of residuals). 
+
+
+# Step 4
+
+As it is mentioned above, lag1 value is added into data table and model in this step. Hence regression result has lower autocorrelated residuals, better variance of residuals and better mean which is closer to 0 (compared to step1,step2,step3).
+
+```{r}
+mytable[, residuals:=residuals(fit3)]
+mytable[, lag1:=shift(residuals(fit3),1)]
+ffit= lm(House_Sales~trend+as.factor(month)+Interest+Economy+lag1, data = mytable)
+summary(ffit)
+checkresiduals(ffit,lag=12)
+
+acf(residuals(ffit))
+```
+
+Finally, best regression model is obtained by adding lag. The final model does not have autocorrelated residuals, it does have higher R-squared value and it does have less residual standard error.
+
+## Further Visualiation
+
+```{r echo=FALSE, include=FALSE}
+fitted=fitted(ffit)
+residual=residuals(ffit)
+frame2=data.frame(fitted,residual,trend=1:62)
+mytable2=as.data.table(frame2)
+mytable2[,House_Sales:=tail(mytable$House_Sales,62)]
+cols1 = c("predicted" = "yellow", "actual" = "blue")
+cols2 = c("House_Sales" = "yellow", "fitted" = "blue")
+```
+
+Residuals of the final model could be interpreted by the chart below. (Fitted vs Residual)
+
+```{r echo=FALSE}
+mytable2 %>%
+  ggplot(aes(x=fitted, y=residual)) + 
+  geom_point() 
+```
+
+Unfortunately there are a few outliers which may bring model to fail but there is no precaution to be taken.
+
+
+This is sale quantity vs fitted values:
+
+```{r echo = FALSE}
+mytable2 %>%
+  ggplot(aes(x=fitted, y=House_Sales)) + 
+  geom_point() +
+  geom_abline(slope=1, intercept=0) 
+```
+
+Except a few points, values are distributed around x=y line.
+
+Below is the line graph:
+
+```{r echo =FALSE}
+mytable2 %>%
+  ggplot() + 
+  geom_line(aes(x=trend, y=House_Sales,color="House_Sales")) + geom_line(aes(x=trend, y=fitted,color="fitted")) + 
+  geom_abline(slope=1, intercept=0) +
+  scale_color_manual(values=cols2)
+```
+
+## Forecasting of April 2021
+
+To forecast 04-2021, independent variables of regression must be predicted too. Required operations are done below:
+
+```{r echo=TRUE, include=FALSE}
+temp=data.table(Date=as.character("2021-04"),House_Sales=0,Interest=0,Economy=0,trend=64,month=4,is_covid=0,residuals=0,lag1=4620.495803)
+mytable=rbind(mytable,temp)
+mytable[64,3]=predict(lm(Interest~trend, data = mytable))[64]
+mytable[64,4]=predict(lm(Economy~trend, data = mytable)) [64]
+forcest_result=predict(lm(House_Sales~trend+as.factor(month)+Interest+Economy+lag1, data = mytable))[63]
+```
+
+This is the forecasted quantity of sales:
+
+```{r echo=FALSE}
+forcest_result
+```
+
+```{r include=FALSE}
+ffitted=fitted(lm(House_Sales~trend+as.factor(month)+Interest+Economy+lag1, data = mytable))
+actual=tail(sales,62)
+a=data.table(fitted=forcest_result , residual = 0 , trend = 64 , House_Sales=0)
+mytable2=rbind(mytable2,a)
+```
+
+And lastly, prediction vs actual quantity is shown below:
+
+```{r echo =FALSE}
+cols <- c("predicted" = "orange", "actual" = "blue")
+ggplot() + 
+  geom_line(data = mytable2, aes(x = trend, y = fitted,color = "predicted")) +
+  geom_line(data = mytable2, aes(x = trend, y = House_Sales,color = "actual")) +
+  xlab('time') +
+  ylab('sales') +
+  scale_color_manual(values = cols)
+```
+
+## Conclusion
+
+In this study, forecast from past data is done. As a consequence of the study, it could be interpreted like that interest rates have negative effect on house sales and the result of survey about economic situation of households has positive relation with the number of sales. During this work, linear regression is utilized, autocorrelations are checked and final model is constructed. Forecast of 04-2021 is 28091.
+
+
+
