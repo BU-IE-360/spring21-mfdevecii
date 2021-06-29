@@ -6,8 +6,7 @@
 
 ## Homework 0
   
-**1)** [Here](files/HW0.html) is my beginning homework.
-
+**1)** [Here](files/HW0/HW0.html) is my beginning homework.
 
 ## Homework 1
 
@@ -16,3 +15,7 @@
 ## Homework 2
 
 **3)** [Here](files/HW2/HW2.html) is my 2nd homework.
+
+## Homework 3
+
+**3)** [Here](files/HW3/Final-RMD.html) is my 3rd homework.
