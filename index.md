@@ -16,6 +16,6 @@
 
 **3)** [Here](files/HW2/HW2.html) is my 2nd homework.
 
-## Homework 4
+## Homework 3
 
 **3)** [Here](files/HW3/Final-RMD.html) is my 3rd homework.
