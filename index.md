@@ -18,4 +18,8 @@
 
 ## Homework 3
 
-**3)** [Here](files/HW3/Final-RMD.html) is my 3rd homework.
+**4)** [Here](files/HW3/Final-RMD.html) is my 3rd homework.
+
+## Homework 4
+
+**5)** [Here](files/HW4/HW4.html) is my 3rd homework.
