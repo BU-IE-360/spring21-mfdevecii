@@ -1,0 +1,2791 @@
+---
+title: "Group 13 Term Project"
+output: html_document
+---
+# Introduction 
+
+In this project our main aim is to find how many products Trendyol sells each day. Thanks to Trendyol, they provide us a dataset with sales data and other relative data. A reliable forecast could help Trendyol to make their inventory decisions more accurate and in the marketing department more advertisements will be made to make more sales. By looking at the historical data we develop a forecasting method to predict the next day's sales quantity. We made submissions every day in a live competition and it enhances the competitive spirit of ours as a group. The rankings are evaluated with the lowest weighted mean absolute percentage error(WMAPE) of the predictions. 
+  First we manipulate the raw data with converting it to a data table with different products as different rows. Some of the data values are missing to erase the null values in those products we take the starting point further to improve our model's reliability. Seasonality analysis is done with the necessary decompositions. In our models 7 day frequency gives us the best ACF and PACF values so we use freq=7 in all our predictions. In the second step we recommend some ARIMA models to build on. By looking at the ACF graphs some AR and MA models are standing out from others. However with the help of auto.arima function, in most of the products it gives us the best ARIMA model. To justify the best model AIC and BIC values should be lower than other models. These are not the only test measures of the data, we create a function called "accu" to bring those test together and that helped comparing our models faster. In the competition we emphasize the WMAPE but in the study we cover MAPE, MAD, MADP  as well. 
+  Second we create a function called "correlation" to find correlations between the sales data and other related columns of the data table. The main aim here is to find a regressor that can help our model grow. In the arimax models we try three of the most correlated categories. After adding the highly correlated regressor AIC values are investigated again and the lowest one is chosen. Given our test function "accu" the test measures MAD, MADP, MAPE, WMAPE values are getting better after incorporating the regressor. 
+  Lastly in the test times we were creating different models to see which works the best. After selecting the best model test days are done. We give predictions each day with respect to our model starting from June 11th until June 25th. After June 25th the submission system is closed and our predictions have finished.
+
+
+# Related Literature
+
+During this study we use lots of data analysis techniques. Since we are working on time series data. It actually means a collection of observations obtained through repeated measurements over time.[Source](https://www.influxdata.com/what-is-time-series-data/). The ARIMA (Auto Regressive Integrated Moving Average) models are used through this research. We always try to emphasize the visual components as well, plotting and displaying the components of a time series data is important. We choose the lags from ACF and PACF graphs which are plots that graphically summarize the strength of a relationship with an observation in a time series with observations at prior time steps. [Source](https://machinelearningmastery.com/gentle-introduction-autocorrelation-partial-autocorrelation/) After selecting the models we look at the AIC values to see which model may give us the best forecasts.The Akaike information criterion (AIC) is a mathematical method for evaluating how well a model fits the data it was generated from.[Source](https://www.scribbr.com/statistics/akaike-information-criterion/)
+
+# Approach to Problem
+
+The aim of this study is to develop some forecasting approaches and to manipulate the data provided by Trendyol so that necessary interpretations can be made. During the study, seasonality for each product will be examined. Then necessary decomposition will be done to use ARIMA models. Furtherly, possible regressors will be checked and ARIMAX, SARIMAX models will be utilized. Best model is going to be chosen according to their performance and test results. Necessary interpretations and visualizations will be made at each step. Lastly, forecasting will be done by using the most appropriate model selected during the steps.
+
+Product names used in the work:
+
+1)Yüz Temizleyici
+
+2)Bebek Islak Mendili
+
+3)Xiaomi Bluetooth Kulaklık
+
+4)Fakir Süpürge
+
+5)Tayt
+
+6)Diş Fırçası
+
+7)Mont
+
+8)Bikini Model-1
+
+9)Bikini Model-2
+
+
+# Step 0
+
+In this step, required libraries are called, necessary data tables are created and the other very beginning operations are executed.
+
+```{r , warning=FALSE, error=FALSE}
+library(data.table)
+library(ggplot2)
+library(dplyr)
+require(mgcv)
+library(fpp)
+require(gratia)
+library(readxl)
+library(lubridate)
+library(forecast)
+library(zoo)
+library(stringr)
+library(stats)
+library(urca)
+
+g13<-read_excel("g13.xlsx") 
+dat<-as.data.table(g13)   # Main Data Table
+
+yuzt<-dat[1:372,]        # Data table which holds the data of Product-1 (Yüz Temizleyici)
+mendil<-dat[373:744,]    # Data table which holds the data of Product-2 (Bebek Islak Mendili)
+xiaomi<-dat[745:1116,]   # Data table which holds the data of Product-3 (Xiaomi Bluetooth Kulaklık)
+fakir<-dat[1117:1488,]   # Data table which holds the data of Product-4 (Fakir Süpürge)
+tayt<-dat[1489:1860,]    # Data table which holds the data of Product-5 (Tayt)
+bik1<-dat[1861:2232,]    # Data table which holds the data of Product-6 (Bikini Model-1)
+firca<-dat[2233:2604,]   # Data table which holds the data of Product-7 (Diş Fırçası)
+mont<-dat[2605:2976,]    # Data table which holds the data of Product-8 (Mont)
+bik2<-dat[2977:3348,]    # Data table which holds the data of Product-9 (Bikini Model-2)
+
+
+```
+
+
+
+# Product 1 (Yüz Temizleyici)
+
+## Step 1
+
+In this step, seasonality of each product is analysed to make appropriate decomposition.
+
+
+
+### Seasonality Analysis
+
+The plot below shows the sold count of product-1 for related period.
+
+```{r , echo=FALSE}
+ts.plot(yuzt$sold_count, xlab= "Days", ylab= "Sold Count", main= "Yüz Temizleyici")
+
+```
+
+As it is seen above, there is a pattern which fluctuates up at certain days and fluctuates down at some other days. That idea direct us to check autocorrelation so that determine related seosanality. 
+
+Table below shows autocorrelation values at each lag until lag 100. 
+
+```{r , echo=FALSE}
+acf(yuzt$sold_count, lag=100 ,main="Yüz Temizleyici")
+```
+
+It would not be inappropriate to say that autocorrelation function shows a pattern as well. Around 15th and 60th lag, autocorrelation values get higher and autocorrelation fades away at later lags. Normally, time series object of sold count for product-1 ought to be chosen at the frequency of 15, which will cover autocorrelation of lag 60 too. However, as it will be observed in the next step; if lag 7 is chosen, the decomposition results will be better compared to lag 15. And at that point, we can cover some other autocorrelation lags better with getting a more stationary data, so it would not be wrong to say that there is weekly seasonality even if autocorrelation function does not show us it directly.
+
+
+### Decomposition 
+
+As far as it is seen below, there is increasing variance. So best way of decomposing is utilizing multiplicative method.
+
+```{r , echo=FALSE}
+ts.plot(yuzt$sold_count, xlab= "Days", ylab= "Sold Count", main= "Yüz Temizleyici")
+
+```
+
+#### Frequency=7
+
+Required codes are below:
+
+```{r }
+ts11=ts(yuzt$sold_count, frequency = 7)
+decomposed11= decompose(ts11,type="multiplicative")
+deseasonalised11=ts11/decomposed11$seasonal
+detrend11=deseasonalised11/decomposed11$trend
+acf(detrend11,na.action = na.pass, main="Decomposed ACF freq=7")
+
+```
+
+ACF of decomposed series seems really low and acceptable. Moreover, as it is seen in the graph for random (detrended) values are quite stationary with stable variance and nearly constant mean. Its trend seems to increase with fluctuations which may result in possible errors in the forecast. But model is still acceptable and good. Lastly, its seasonal component shows a decent pattern with an acceptable shape.
+
+```{r, echo= FALSE}
+plot(decomposed11)
+```
+
+
+#### Frequency=15
+
+Required codes are below:
+
+```{r }
+ts12=ts(yuzt$sold_count, frequency = 15)
+decomposed12= decompose(ts12,type="multiplicative")
+deseasonalised12=ts12/decomposed12$seasonal
+detrend12=deseasonalised12/decomposed12$trend
+acf(detrend12,na.action = na.pass, main="Decomposed ACF freq=15")
+
+```
+
+The reason why acf is really high at lag 15 might be that in Turkey, most people get their salary either at day 1 or day 15 of related month, which justifies high acf value around lag 15. ([Source](https://ailevecalisma.gov.tr/media/3920/maas.pdf)) Probably, people tend to shop more after getting their salary. Even if people generally use credit cards, getting fresh money gives confidence to people to spend more on shopping products. So, another seasonality is observed roughly at each 15 days. However, as it is mentioned above, acf result of detrended series is worse now. Moreover, the graph below shows the plot of detrended values, which is worse than the one in frequency=7. 
+
+```{r, echo= FALSE}
+plot(decomposed12)
+```
+
+Detrended values (random) are less stationary in this case. They do not have constant variance and their means are less constant compared to previous one. Trend in this series seems more wavy but it tends to increase more. Lastly, seasonal component seems similar. However, this model is worse compared to previous one because detrended random values shows more nonstationarity.
+
+#### Frequency=30
+
+Required codes are below:
+
+```{r }
+ts13=ts(yuzt$sold_count, frequency = 30)
+decomposed13= decompose(ts13,type="multiplicative")
+deseasonalised13=ts13/decomposed13$seasonal
+detrend13=deseasonalised13/decomposed13$trend
+acf(detrend13,na.action = na.pass, main="Decomposed ACF freq=30")
+
+```
+
+```{r, echo= FALSE}
+plot(decomposed13)
+```
+
+Detrended values are worst in this model. They show a nonstationary behavior due to changing variance and mean. Trend component seems to increase more compared to the other two and it fluctuates less. However, acf of detrended values are high and not as requested. Its random values are also the worst of 3 models. Seasonal component seems to have larger range, which changes results more.
+
+For the further parts, we will continue with the model of frequency = 7. 
+
+
+## Step 2
+
+Based on the findings in the first part, it will be proposed ARIMA models and comments on their performance will be done. 
+
+
+```{r, echo=FALSE}
+tsdisplay(decomposed11$random, lag=30, main="Random")
+```
+
+As it is understood form ACF and PACF plots, ACF and PACF plot tends to decrease. For decreasing ACF part, PACF pilot does not show significant figures after lag 3.AR(3) model can be proposed. For decreasing PACF part, ACF pilot does not show significant figures after lag 3, so MA(3) is proposed. We can also try auto.arima and compare these 3 to select the best model. Additionaly, it should be mentioned that there is no sign of seasonal arima here. 
+
+
+### AR(3)
+
+AR(3) is creted below:
+
+```{r}
+model11=arima(decomposed11$random,order=c(3,0,0))
+print(model11)
+fitted11=fitted(model11)
+fitted_transformed11=fitted11*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed11,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are really close to real sales amount (black). They are little lagged because of the nature of AR models. 
+
+```{r, echo =FALSE}
+plot(residuals(model11), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted11,main="AR(3)")
+```
+
+Residuals show constant mean but variance differs sometimes. ACF and PACF plot still shows some autocorrelation signs.
+
+### MA(3)
+
+MA(3) is creted below:
+
+```{r}
+model12=arima(decomposed11$random,order=c(0,0,3))
+print(model12)
+fitted12=fitted(model12)
+fitted_transformed12=fitted12*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed12,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are really close to real sales amount (black) in this model too.
+
+```{r, echo =FALSE}
+plot(residuals(model12), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted12, main="MA(3)")
+
+```
+
+Residuals show constant mean but variance seems to differ more in this model. Eventhough ACF and PACF values are better in this model, they are still high.
+
+
+
+### Auto.Arima
+
+Auto Arima is created below:
+
+```{r}
+model13=auto.arima(decomposed11$random,seasonal=FALSE)
+print(model13)
+model13=arima(decomposed11$random,order=c(3,0,2)) # Manuel version of auto.arima (same model)
+fitted13=fitted(model13)
+fitted_transformed13=fitted13*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed13,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are again really close to real sales amount (black).  
+
+```{r}
+plot(residuals(model13), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted13,main="ARIMA(3,0,2)")
+```
+
+Residuals show constant mean but variance differs sometimes. ACF and PACF plots tells us this is the best model in terms of lower values of ACF, PACF.
+
+### Model Comparision 
+
+```{r}
+AIC(model11)
+BIC(model11)
+AIC(model12)
+BIC(model12)
+AIC(model13)
+BIC(model13)
+```
+
+As it is seen above, model13 which is autoarima with ARIMA(3.0.2) is the best model with lower values. ARIMA(3,0,2) should be selected for further steps.
+
+Test for fitted values:
+
+```{r}
+accu=function(actual,forecast){
+  n=length(actual)
+  error=actual-forecast
+  mean=mean(actual)
+  sd=sd(actual)
+  CV=sd/mean
+  MAPE=sum(abs(error/actual))/n
+  MAD=sum(abs(error))/n
+  MADP=sum(abs(error))/sum(abs(actual))
+  WMAPE=MAD/mean
+  l=data.frame(n,mean,sd,CV,MAPE,MAD,MADP,WMAPE)
+  return(l)
+}
+
+accu(ts11,tail(head(fitted_transformed11,369),366))
+accu(ts11,tail(head(fitted_transformed12,369),366))
+accu(ts11,tail(head(fitted_transformed13,369),366))
+
+```
+
+Again third result which is ARIMA(3,0,2) gives the best result with lower errors in all error tests methods.
+
+## Step 3
+
+In this step, possible regressors will be examined to be used on arimax model.
+
+Code below shows correlation between sold count and the data categories.
+
+```{r}
+correlation=function(dt){  # Function to compute correlation between sold counts and other columns in the data
+  dt=as.data.frame(dt)
+  a=data.frame(data= NA, nrow=8)
+  colnames(a)=c("Variable","Correlation")
+  a[1,1]="visit count"
+  a[2,1]="basket count"
+  a[3,1]="favored count"
+  a[4,1]="category sold"
+  a[5,1]="category visit"
+  a[6,1]="category basket"
+  a[7,1]="category favored"
+  a[8,1]="category brand sold"
+  for(i in 1:8) {
+    a[i,2]=cor(dt[,4],dt[,i+4])
+  }
+  return (a)
+}
+cor(yuzt$sold_count,yuzt$price)
+correlation(yuzt)
+```
+
+Obviously there is high correlation between sold counts and those basket count, category sold and category favored. This result actually makes sense because people tend to buy what they favored or basketed. Thanks to function created above, possible regressors are selected easily. However, potentiel problem with these regressors is that there is no future values of regressors and they should be predicted as well in the final version of the model. 
+
+## Step 4
+
+In this step, potentiel regressors will be used in the model and arimax models will be created. 
+
+```{r, warning=FALSE, error=FALSE}
+modelx1=arima(decomposed11$random,order=c(3,0,2),xreg=yuzt$basket_count)
+print(modelx1)
+fittedx1=fitted(modelx1)
+fitted_transformedx1=fittedx1*decomposed11$seasonal*decomposed11$trend
+
+modelx2=arima(decomposed11$random,order=c(3,0,2),xreg=yuzt$category_sold)
+print(modelx2)
+fittedx2=fitted(modelx2)
+fitted_transformedx2=fittedx2*decomposed11$seasonal*decomposed11$trend
+
+modelx3=arima(decomposed11$random,order=c(3,0,2),xreg=yuzt$category_favored)
+print(modelx3)
+fittedx3=fitted(modelx3)
+fitted_transformedx3=fittedx3*decomposed11$seasonal*decomposed11$trend
+```
+
+3 models are constructed according to related one of 3 regressors. Now they will be tested for last one week.
+
+```{r}
+accu(ts11,tail(head(fitted_transformed13,369),7)) # arima model
+accu(ts11,tail(head(fitted_transformedx1,369),7)) # arimax1
+accu(ts11,tail(head(fitted_transformedx2,369),7)) # arimax2
+accu(ts11,tail(head(fitted_transformedx3,369),7)) # arimax3
+```
+
+As it is seen in the results, they all have similar results but model arimax1 is slightly better in terms of lower WMAPE and other parameters. Moreover, model shows better performance with arimax1 (regressor as basket count) than arima model in previous step. 
+
+
+## Final Step
+
+After all of tests and operations done above, arimax1 model gives best results and it is selected as final model.
+
+# Forecasting Part for This Product
+
+Predicting new basket count values with moving averages method:
+
+```{r}
+basket1<-tail(yuzt$basket_count,7)
+for (i in 1:26) {
+  basket1<-append(basket1,(basket1[i]+basket1[i+1]+basket1[i+2]+basket1[i+3]+basket1[i+4]+basket1[i+5]+basket1[i+6])/7)
+}
+basket_rounded<-round(basket1)
+basket_rounded
+```
+
+Forecasted values are below:
+
+```{r}
+basket_count_forxreg<-c(tail(yuzt$basket_count,3),basket_rounded[8:33])
+
+preds<-predict(modelx1,n.ahead = 29,newxreg = basket_count_forxreg)$pred
+preds<-ts(preds,frequency = 7)
+last_trend_value <-tail(decomposed11$trend[!is.na(decomposed11$trend)],1)
+seasonality=decomposed11$seasonal[6:34]
+print(preds)
+ts.plot(preds,xlab = "Weeks", ylab="Predictions", main="Forecasts")
+```
+
+
+
+# Product 2 (Islak Mendil)
+
+
+## Step 1
+
+In this step, seasonality of each product is analysed to make appropriate decomposition.
+
+
+
+### Seasonality Analysis
+
+The plot below shows the sold count of product-2 for related period.
+
+```{r , echo=FALSE}
+ts.plot(mendil$sold_count)
+
+```
+
+As it is seen above, there is a pattern which fluctuates up at certain days and fluctuates down at some other days. That idea direct us to check autocorrelation so that determine related seosanality. 
+
+Table below shows autocorrelation values at each lag until lag 100. 
+
+```{r , echo=FALSE}
+acf(mendil$sold_count, lag=100 ,main="Islak Mendil")
+```
+
+It would not be inappropriate to say that autocorrelation function shows a pattern as well. Around 15th and 60th lag, autocorrelation values get higher and autocorrelation fades away at later lags. Normally, time series object of sold count for product-2 ought to be chosen at the frequency of 15, which will cover autocorrelation of lag 60 too. However, just like the previous case in product-1; if lag 7 is chosen, the decomposition results will be better compared to lag 15. And at that point, we can cover some other autocorrelation lags better with getting a more stationary data, so it would not be wrong to say that there is weekly seasonality even if autocorrelation function does not show us it directly.
+
+
+### Decomposition 
+
+As far as it is seen below, there is increasing variance. So best way of decomposing is utilizing multiplicative method.
+
+```{r , echo=FALSE}
+ts.plot(mendil$sold_count, xlab= "Days", ylab= "Sold Count", main= "Islak Mendil")
+
+```
+
+#### Frequency=7
+
+Required codes are below:
+
+```{r }
+ts11=ts(mendil$sold_count, frequency = 7)
+decomposed11= decompose(ts11,type="multiplicative")
+deseasonalised11=ts11/decomposed11$seasonal
+detrend11=deseasonalised11/decomposed11$trend
+acf(detrend11,na.action = na.pass, main="Decomposed ACF freq=7")
+
+```
+
+ACF of decomposed series seems really low and acceptable. Moreover, as it is seen in the graph for random (detrended) values are quite stationary with stable variance and nearly constant mean. Its trend seems to increase with fluctuations which may result in possible errors in the forecast. But model is still acceptable and good. Lastly, its seasonal component shows a decent pattern with an acceptable shape.
+
+```{r, echo= FALSE}
+plot(decomposed11)
+```
+
+
+#### Frequency=15
+
+Required codes are below:
+
+```{r }
+ts12=ts(mendil$sold_count, frequency = 15)
+decomposed12= decompose(ts12,type="multiplicative")
+deseasonalised12=ts12/decomposed12$seasonal
+detrend12=deseasonalised12/decomposed12$trend
+acf(detrend12,na.action = na.pass, main="Decomposed ACF freq=15")
+
+```
+
+
+```{r, echo= FALSE}
+plot(decomposed12)
+```
+
+Detrended values (random) are less stationary in this case. They do not have constant variance and their means are less constant compared to previous one. Trend in this series seems more wavy but it tends to increase more. Lastly, seasonal component seems similar. However, this model is worse compared to previous one because detrended random values shows more nonstationarity.
+
+#### Frequency=30
+
+Required codes are below:
+
+```{r }
+ts13=ts(mendil$sold_count, frequency = 30)
+decomposed13= decompose(ts13,type="multiplicative")
+deseasonalised13=ts13/decomposed13$seasonal
+detrend13=deseasonalised13/decomposed13$trend
+acf(detrend13,na.action = na.pass, main="Decomposed ACF freq=30")
+
+```
+
+```{r, echo= FALSE}
+plot(decomposed13)
+```
+
+Detrended values are worst in this model. They show a nonstationary behavior due to changing variance and mean. Trend component seems to increase more compared to the other two and it fluctuates less. However, acf of detrended values are high and not as requested. Its random values are also the worst of 3 models. Seasonal component seems to have larger range, which changes results more.
+
+For the further parts, we will continue with the model of frequency = 7. 
+
+
+## Step 2
+
+Based on the findings in the first part, it will be proposed ARIMA models and comments on their performance will be done. 
+
+
+```{r, echo=FALSE}
+tsdisplay(decomposed11$random, lag=30, main="Random")
+```
+
+As it is understood form ACF and PACF plots, ACF and PACF plot tends to decrease. For decreasing ACF part, PACF pilot does not show significant figures after lag 3 .AR(3) model can be proposed. For decreasing PACF part, ACF pilot does not show significant figures after lag 3, so MA(3) is proposed. We can also try auto.arima and compare these 3 to select the best model. Additionaly, it should be mentioned that there is no sign of seasonal arima here. 
+
+
+### AR(3)
+
+AR(3) is creted below:
+
+```{r}
+model11=arima(decomposed11$random,order=c(3,0,0))
+print(model11)
+fitted11=fitted(model11)
+fitted_transformed11=fitted11*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed11,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are really close to real sales amount (black). They are little lagged because of AR terms. 
+
+```{r, echo =FALSE}
+plot(residuals(model11), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted11,main="AR(3)")
+```
+
+Residuals show constant mean but variance differs sometimes. ACF and PACF plot still shows some autocorrelation signs.
+
+### MA(3)
+
+MA(3) is creted below:
+
+```{r}
+model12=arima(decomposed11$random,order=c(0,0,3))
+print(model12)
+fitted12=fitted(model12)
+fitted_transformed12=fitted12*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed12,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are really close to real sales amount (black) in this model too.
+
+```{r, echo =FALSE}
+plot(residuals(model12), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted12, main="MA(3)")
+
+```
+
+Residuals show nearly constant mean but variance seems to jump in this model. Eventhough ACF and PACF values are better in this model, they are still high.
+
+
+
+### Auto.Arima
+
+Auto Arima is created below:
+
+```{r}
+model13=auto.arima(decomposed11$random,seasonal=FALSE)
+print(model13)
+model13=arima(decomposed11$random,order=c(2,0,1)) # Manuel version of auto.arima (same model)
+fitted13=fitted(model13)
+fitted_transformed13=fitted13*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed13,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are again really close to real sales amount (black).  
+
+```{r}
+plot(residuals(model13), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted13,main="ARIMA(2,0,1)")
+```
+
+Residuals show constant mean but variance differs sometimes. ACF and PACF plots tells us this is the best model in terms of lower values of ACF, PACF.
+
+### Model Comparision 
+
+```{r}
+AIC(model11)
+BIC(model11)
+AIC(model12)
+BIC(model12)
+AIC(model13)
+BIC(model13)
+```
+
+As it is seen above, model13 which is autoarima with ARIMA(2.0.1) is the best model with lower values. ARIMA(2,0,1) should be selected for further steps.
+
+Test for fitted values:
+
+```{r}
+accu=function(actual,forecast){
+  n=length(actual)
+  error=actual-forecast
+  mean=mean(actual)
+  sd=sd(actual)
+  CV=sd/mean
+  MAPE=sum(abs(error/actual))/n
+  MAD=sum(abs(error))/n
+  MADP=sum(abs(error))/sum(abs(actual))
+  WMAPE=MAD/mean
+  l=data.frame(n,mean,sd,CV,MAPE,MAD,MADP,WMAPE)
+  return(l)
+}
+
+accu(ts11,tail(head(fitted_transformed11,369),366))
+accu(ts11,tail(head(fitted_transformed12,369),366))
+accu(ts11,tail(head(fitted_transformed13,369),366))
+
+```
+
+Again third result which is ARIMA(2,0,1) gives the best result in MAD, MAPE, MADP and nearly equal to MA model in WMAPE,which is better than AR(3) model. According to performances, ARIMA model is better than MA model, MA model is better than AR model.
+
+## Step 3
+
+In this step, possible regressors will be examined to be used on arimax model.
+
+Code below shows correlation between sold count and the data categories.
+
+```{r}
+correlation=function(dt){  # Function to compute correlation between sold counts and other columns in the data
+  dt=as.data.frame(dt)
+  a=data.frame(data= NA, nrow=8)
+  colnames(a)=c("Variable","Correlation")
+  a[1,1]="visit count"
+  a[2,1]="basket count"
+  a[3,1]="favored count"
+  a[4,1]="category sold"
+  a[5,1]="category visit"
+  a[6,1]="category basket"
+  a[7,1]="category favored"
+  a[8,1]="category brand sold"
+  for(i in 1:8) {
+    a[i,2]=cor(dt[,4],dt[,i+4])
+  }
+  return (a)
+}
+cor(mendil$sold_count,mendil$price)
+correlation(mendil)
+```
+
+Obviously there is high correlation between sold counts and those basket count, category sold and category favored. This result actually makes sense because people tend to buy what they favored or basketed. Thanks to function created above, possible regressors are selected easily. However, potentiel problem with these regressors is that there is no future values of regressors and they should be predicted as well in the final version of the model. 
+
+## Step 4
+
+In this step, potentiel regressors will be used in the model and arimax models will be created. 
+
+```{r, warning=FALSE, error=FALSE}
+modelx1=arima(decomposed11$random,order=c(2,0,1),xreg=mendil$basket_count)
+print(modelx1)
+fittedx1=fitted(modelx1)
+fitted_transformedx1=fittedx1*decomposed11$seasonal*decomposed11$trend
+
+modelx2=arima(decomposed11$random,order=c(2,0,1),xreg=mendil$category_sold)
+print(modelx2)
+fittedx2=fitted(modelx2)
+fitted_transformedx2=fittedx2*decomposed11$seasonal*decomposed11$trend
+
+modelx3=arima(decomposed11$random,order=c(2,0,1),xreg=mendil$category_favored)
+print(modelx3)
+fittedx3=fitted(modelx3)
+fitted_transformedx3=fittedx3*decomposed11$seasonal*decomposed11$trend
+```
+
+```{r}
+AIC(model13)
+AIC(modelx1)
+AIC(modelx2)
+AIC(modelx3)
+```
+
+For initial comparision, model arimax with regressor as basket count seems to have better AIC value.
+
+
+3 models are constructed according to related one of 3 regressors. Now they will be tested for last one week.
+
+```{r}
+accu(ts11,tail(head(fitted_transformed13,369),7)) # arima model
+accu(ts11,tail(head(fitted_transformedx1,369),7)) # arimax1
+accu(ts11,tail(head(fitted_transformedx2,369),7)) # arimax2
+accu(ts11,tail(head(fitted_transformedx3,369),7)) # arimax3
+```
+
+As it is seen in the results, they all have similar results but model arimax1 is slightly better in terms of lower WMAPE and other parameters. Moreover, model shows better performance with arimax1 (regressor as basket count) than arima model in previous step. 
+
+
+## Final Step
+
+After all of tests and operations done above, arimax1 model gives best results and it is selected as final model.
+
+# Forecasting Part for This Product
+
+Predicting new basket count values with moving averages method:
+
+```{r}
+basket1<-tail(mendil$basket_count,7)
+for (i in 1:26) {
+  basket1<-append(basket1,(basket1[i]+basket1[i+1]+basket1[i+2]+basket1[i+3]+basket1[i+4]+basket1[i+5]+basket1[i+6])/7)
+}
+basket_rounded<-round(basket1)
+basket_rounded
+```
+
+Forecasted values are below:
+
+```{r}
+basket_count_forxreg<-c(tail(mendil$basket_count,3),basket_rounded[8:33])
+preds<-predict(modelx1,n.ahead = 29,newxreg = basket_count_forxreg)$pred
+preds<-ts(preds,frequency = 7)
+last_trend_value <-tail(decomposed11$trend[!is.na(decomposed11$trend)],1)
+seasonality=decomposed11$seasonal[6:34]
+preds=preds*last_trend_value*seasonality
+print(preds)
+plot(preds,xlab="Weeks", main="Forecasts", ylab="Predictions")
+```
+
+# Product 3 (Xiaomi Bluetooth Kulaklık)
+
+
+## Step 1
+
+In this step, seasonality of each product is analysed to make appropriate decomposition.
+
+
+
+### Seasonality Analysis
+
+The plot below shows the sold count of product-3 for related period.
+
+```{r , echo=FALSE}
+ts.plot(xiaomi$sold_count)
+
+```
+
+As it is seen above, there is a pattern which fluctuates up at certain days and fluctuates down at some other days. That idea direct us to check autocorrelation so that determine related seosanality. 
+
+Table below shows autocorrelation values at each lag until lag 100. 
+
+```{r , echo=FALSE}
+acf(xiaomi$sold_count, lag=100 ,main="Xiaomi Bluetooth Kulaklık")
+```
+
+It would not be inappropriate to say that autocorrelation function shows a pattern as well. Around 7th and 30th lag, autocorrelation values get higher and autocorrelation fades away at later lags. Normally, time series object of sold count for product-3 ought to be chosen at the frequency of 7 or 30 but we had better determine the seasonality after decomposition stage. There is weekly and maybe monthly seasonality for this product.
+
+
+### Decomposition 
+
+As far as it is seen below, there is increasing variance. So best way of decomposing is utilizing multiplicative method.
+
+```{r , echo=FALSE}
+ts.plot(xiaomi$sold_count, xlab= "Days", ylab= "Sold Count", main= "Xiaomi Bluetooth Kulaklık")
+
+```
+
+#### Frequency=7
+
+Required codes are below:
+
+```{r }
+ts11=ts(xiaomi$sold_count, frequency = 7)
+decomposed11= decompose(ts11,type="multiplicative")
+deseasonalised11=ts11/decomposed11$seasonal
+detrend11=deseasonalised11/decomposed11$trend
+acf(detrend11,na.action = na.pass, main="Decomposed ACF freq=7")
+
+```
+
+ACF of decomposed series seems really low and acceptable. Moreover, as it is seen in the graph for random (detrended) values are quite stationary with stable variance (except for some jumps) and nearly constant mean. Its trend seems to gradually increase and decrease with fluctuations which may result in possible errors in the forecast. But model is still acceptable and good. Lastly, its seasonal component shows a decent pattern with an acceptable shape.
+
+```{r, echo= FALSE}
+plot(decomposed11)
+```
+
+
+#### Frequency=30
+
+Required codes are below:
+
+```{r }
+ts13=ts(xiaomi$sold_count, frequency = 30)
+decomposed13= decompose(ts13,type="multiplicative")
+deseasonalised13=ts13/decomposed13$seasonal
+detrend13=deseasonalised13/decomposed13$trend
+acf(detrend13,na.action = na.pass, main="Decomposed ACF freq=30")
+
+```
+
+```{r, echo= FALSE}
+plot(decomposed13)
+```
+
+Detrended values are worse in this model. They show a nonstationary behavior due to changing variance and mean. Trend component does not show any clue to increase or decrease. However, acf of detrended values are not that bad. But its random values are worse than weekly one. Seasonal component seems to have larger deviation, which may fluctuate results more.
+
+For the further parts, we will continue with the model of frequency = 7. 
+
+
+## Step 2
+
+Based on the findings in the first part, it will be proposed ARIMA models and comments on their performance will be done. 
+
+
+```{r, echo=FALSE}
+tsdisplay(decomposed11$random, lag=30, main="Random")
+```
+
+As it is understood form ACF and PACF plots, ACF and PACF plot tends to decrease. For decreasing ACF part, PACF pilot does not show significant figures after lag 3 .AR(3) model can be proposed. For decreasing PACF part, ACF pilot does not show significant figures after lag 3, so MA(3) is proposed. We can also try auto.arima and compare these 3 to select the best model. Additionaly, it should be mentioned that there is no sign of seasonal arima here. 
+
+
+### AR(3)
+
+AR(3) is creted below:
+
+```{r}
+model11=arima(decomposed11$random,order=c(3,0,0))
+print(model11)
+fitted11=fitted(model11)
+fitted_transformed11=fitted11*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed11,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are really close to real sales amount (black). They are little lagged because of AR terms. 
+
+```{r, echo =FALSE}
+plot(residuals(model11), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted11,main="AR(3)")
+```
+
+Residuals show constant mean but variance increases.
+
+### MA(3)
+
+MA(3) is creted below:
+
+```{r}
+model12=arima(decomposed11$random,order=c(0,0,3))
+print(model12)
+fitted12=fitted(model12)
+fitted_transformed12=fitted12*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed12,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are really close to real sales amount (black) in this model too.
+
+```{r, echo =FALSE}
+plot(residuals(model12), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted12, main="MA(3)")
+
+```
+
+Residuals are really similar to the first model. AIC value is better in this model.
+
+
+
+### Auto.Arima
+
+Auto Arima is created below:
+
+```{r}
+model13=auto.arima(decomposed11$random,seasonal = FALSE)
+print(model13)
+model13=arima(decomposed11$random,order=c(5,0,3)) # Manuel version of auto.arima (same model)
+fitted13=fitted(model13)
+fitted_transformed13=fitted13*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed13,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are again really close to real sales amount (black).  
+
+```{r}
+plot(residuals(model13), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted13,main="ARIMA(5,0,3)")
+
+```
+
+Residuals show constant mean but variance differs sometimes. ACF and PACF plots tells us this is the best model in terms of lower values of ACF, PACF.
+
+### Model Comparision 
+
+```{r}
+AIC(model11)
+BIC(model11)
+AIC(model12)
+BIC(model12)
+AIC(model13)
+BIC(model13)
+```
+
+As it is seen above, model13 which is autoarima with ARIMA(5.0.3) is the best in AIC value. However, MA model is better than ARIMA in BIC because of parameter punsihment of BIC calculation. 
+
+Test for fitted values:
+
+```{r}
+accu=function(actual,forecast){
+  n=length(actual)
+  error=actual-forecast
+  mean=mean(actual)
+  sd=sd(actual)
+  CV=sd/mean
+  MAPE=sum(abs(error/actual))/n
+  MAD=sum(abs(error))/n
+  MADP=sum(abs(error))/sum(abs(actual))
+  WMAPE=MAD/mean
+  l=data.frame(n,mean,sd,CV,MAPE,MAD,MADP,WMAPE)
+  return(l)
+}
+
+accu(ts11,tail(head(fitted_transformed11,369),366))
+accu(ts11,tail(head(fitted_transformed12,369),366))
+accu(ts11,tail(head(fitted_transformed13,369),366))
+
+```
+
+ARIMA(5,0,3) gives the best result in all test parameters. According to performances, ARIMA model is better than MA model, MA model is better than AR model. ARIMA(5,0,3) should be selected for further steps.
+
+## Step 3
+
+In this step, possible regressors will be examined to be used on arimax model.
+
+Code below shows correlation between sold count and the data categories.
+
+```{r}
+correlation=function(dt){  # Function to compute correlation between sold counts and other columns in the data
+  dt=as.data.frame(dt)
+  a=data.frame(data= NA, nrow=8)
+  colnames(a)=c("Variable","Correlation")
+  a[1,1]="visit count"
+  a[2,1]="basket count"
+  a[3,1]="favored count"
+  a[4,1]="category sold"
+  a[5,1]="category visit"
+  a[6,1]="category basket"
+  a[7,1]="category favored"
+  a[8,1]="category brand sold"
+  for(i in 1:8) {
+    a[i,2]=cor(dt[,4],dt[,i+4])
+  }
+  return (a)
+}
+cor(xiaomi$sold_count,xiaomi$price)
+correlation(xiaomi)
+```
+
+Obviously there is high correlation between sold counts and those basket count, category sold and price. This result actually makes sense because people tend to buy what they favored or basketed.Moreover, high prices makes people buy less. Thanks to function created above, possible regressors are selected easily. However, potentiel problem with these regressors is that there is no future values of regressors and they should be predicted as well in the final version of the model. 
+
+## Step 4
+
+In this step, potentiel regressors will be used in the model and arimax models will be created. 
+
+```{r, warning=FALSE, error=FALSE}
+modelx1=arima(decomposed11$random,order=c(5,0,3),xreg=xiaomi$basket_count)
+print(modelx1)
+fittedx1=fitted(modelx1)
+fitted_transformedx1=fittedx1*decomposed11$seasonal*decomposed11$trend
+
+modelx2=arima(decomposed11$random,order=c(5,0,3),xreg=xiaomi$category_sold)
+print(modelx2)
+fittedx2=fitted(modelx2)
+fitted_transformedx2=fittedx2*decomposed11$seasonal*decomposed11$trend
+
+modelx3=arima(decomposed11$random,order=c(5,0,3),xreg=xiaomi$price)
+print(modelx3)
+fittedx3=fitted(modelx3)
+fitted_transformedx3=fittedx3*decomposed11$seasonal*decomposed11$trend
+```
+
+```{r}
+AIC(model13)
+AIC(modelx1)
+AIC(modelx2)
+AIC(modelx3)
+```
+
+For initial comparision, although all AIC values are negative and quite few, model arimax with regressor as category sold seems to have better AIC value. However, test results may differ.
+
+
+3 models are constructed according to related one of 3 regressors. Now they will be tested for last one week.
+
+```{r}
+accu(ts11,tail(head(fitted_transformed13,369),7)) # arima model
+accu(ts11,tail(head(fitted_transformedx1,369),7)) # arimax1
+accu(ts11,tail(head(fitted_transformedx2,369),7)) # arimax2
+accu(ts11,tail(head(fitted_transformedx3,369),7)) # arimax3
+```
+
+To interpret the test, model arimax3 (arimax with regressor as price) gives the least parameter results. In all parameters such as WMAPE, arimax3 is the best eventhough its relatively higher AIC value. 
+
+
+## Final Step
+
+After all of tests and operations done above, arimax3 (regressor as price) model gives best results and it is selected as final model.
+
+# Forecasting Part for This Product
+
+Predicting new basket count values with moving averages method:
+
+```{r}
+price1<-tail(xiaomi$price,7)
+for (i in 1:26) {
+price1<-append(price1,(price1[i]+price1[i+1]+price1[i+2]+price1[i+3]+price1[i+4]+price1[i+5]+price1[i+6])/7)
+}
+price1
+```
+Forecasted values are below:
+
+```{r}
+price_forxreg<-c(tail(yuzt$price,3),price1[8:33])
+
+preds<-predict(modelx3,n.ahead = 29,newxreg = price_forxreg)$pred
+preds<-ts(preds,frequency = 7)
+last_trend_value <-tail(decomposed11$trend[!is.na(decomposed11$trend)],1)
+seasonality=decomposed11$seasonal[6:34]
+preds=preds*last_trend_value*seasonality
+print(preds)
+plot(preds,xlab="Weeks", main="Forecasts", ylab="Predictions")
+```
+
+
+# Product 4 (Fakir Süpürge)
+
+
+## Step 1
+
+In this step, seasonality of each product is analysed to make appropriate decomposition.
+
+
+
+### Seasonality Analysis
+
+The plot below shows the sold count of product-4 for related period.
+
+```{r , echo=FALSE}
+ts.plot(fakir$sold_count)
+
+```
+
+As it is seen above, there is a pattern which fluctuates up at certain days and fluctuates down at some other days. That idea direct us to check autocorrelation so that determine related seosanality. 
+
+Table below shows autocorrelation values at each lag until lag 100. 
+
+```{r , echo=FALSE}
+acf(fakir$sold_count, lag=100 ,main="Fakir Süpürge")
+```
+
+It would not be inappropriate to say that autocorrelation function shows a pattern as well. Around 7th and 14th lag, autocorrelation values get higher and autocorrelation fades away at later lags. But product-4 should be chosen at the frequency of 7 because if we choose lag7 it may cover lag 14 as well. So there is weekly seasonality.
+
+
+### Decomposition 
+
+As far as it is seen below, there is increasing variance. So best way of decomposing is utilizing multiplicative method.
+
+```{r , echo=FALSE}
+ts.plot(fakir$sold_count, xlab= "Days", ylab= "Sold Count", main= "Fakir Süpürge")
+
+```
+
+#### Frequency=7
+
+Required codes are below:
+
+```{r }
+ts11=ts(fakir$sold_count, frequency = 7)
+decomposed11= decompose(ts11,type="multiplicative")
+deseasonalised11=ts11/decomposed11$seasonal
+detrend11=deseasonalised11/decomposed11$trend
+acf(detrend11,na.action = na.pass, main="Decomposed ACF freq=7")
+
+```
+
+ACF of decomposed series seems really low and acceptable. Moreover, as it is seen in the graph for random (detrended) values are quite stationary with stable variance (except for some jumps) and nearly constant mean. Its trend does not tell us anything important. But model is still acceptable and good. Lastly, its seasonal component shows a decent pattern with an acceptable shape.
+
+```{r, echo= FALSE}
+plot(decomposed11)
+```
+
+#### Frequency=14
+
+Required codes are below:
+
+```{r }
+ts12=ts(fakir$sold_count, frequency = 14)
+decomposed12= decompose(ts12,type="multiplicative")
+deseasonalised12=ts12/decomposed12$seasonal
+detrend12=deseasonalised12/decomposed12$trend
+acf(detrend12,na.action = na.pass, main="Decomposed ACF freq=14")
+plot(decomposed12)
+
+```
+
+Autocorrelation seems higher than the previous one. Reason might be that we do not cover weekly pattern but if we choose lag 7, we can cover lag 14. So frequency=14 is worse than frequency=7.
+
+```{r, echo= FALSE}
+plot(decomposed12)
+```
+
+Detrended values (random) are less stationary in this case. They do not have constant variance and their means are less constant compared to previous one. Trend in this series seems more wavy but it tends to decrease more. Lastly, seasonal component seems similar. However, this model is worse compared to previous one because detrended random values shows more nonstationarity.
+
+#### Frequency=30
+
+Required codes are below:
+
+```{r }
+ts13=ts(fakir$sold_count, frequency = 30)
+decomposed13= decompose(ts13,type="multiplicative")
+deseasonalised13=ts13/decomposed13$seasonal
+detrend13=deseasonalised13/decomposed13$trend
+acf(detrend13,na.action = na.pass, main="Decomposed ACF freq=30")
+
+```
+
+```{r, echo= FALSE}
+plot(decomposed13)
+```
+
+Detrended values are worse in this model. They show a nonstationary behavior due to changing variance and mean. Trend component does not show any clue to increase or decrease because it decreases first then increases in the middle. Acf of detrended values are not very well. But its random values are worse than weekly one because of changing variance and barely constant mean. Seasonal component seems to have larger terms because of larger frequency.
+
+For the further parts, we will continue with the model of frequency = 7. 
+
+
+## Step 2
+
+Based on the findings in the first part, it will be proposed ARIMA models and comments on their performance will be done. 
+
+
+```{r, echo=FALSE}
+tsdisplay(decomposed11$random, lag=30, main="Random")
+```
+
+As it is understood form ACF and PACF plots, ACF and PACF plot tends to decrease. For decreasing ACF part, PACF pilot does not show significant figures after lag 3 .AR(3) model can be proposed. For decreasing PACF part, ACF pilot does not show significant figures after lag 3, so MA(3) is proposed. We can also try auto.arima and compare these 3 to select the best model. Additionaly, it should be mentioned that there is no sign of seasonal arima here. 
+
+
+### AR(3)
+
+AR(3) is creted below:
+
+```{r}
+model11=arima(decomposed11$random,order=c(3,0,0))
+print(model11)
+fitted11=fitted(model11)
+fitted_transformed11=fitted11*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed11,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are really close to real sales amount (black). They are little lagged because of AR terms. 
+
+```{r, echo =FALSE}
+plot(residuals(model11), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted11,main="AR(3)")
+```
+
+Residuals show constant mean but variance increases.
+
+### MA(3)
+
+MA(3) is creted below:
+
+```{r}
+model12=arima(decomposed11$random,order=c(0,0,3))
+print(model12)
+fitted12=fitted(model12)
+fitted_transformed12=fitted12*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed12,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are really close to real sales amount (black) in this model too.
+
+```{r, echo =FALSE}
+plot(residuals(model12), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted12, main="MA(3)")
+
+```
+
+Residuals are  closer to 0 in this model rather than first model. AIC value is better in this model.
+
+
+
+### Auto.Arima
+
+Auto Arima is created below:
+
+```{r}
+model13=auto.arima(decomposed11$random,seasonal = FALSE)
+print(model13)
+model13=arima(decomposed11$random,order=c(4,0,1)) # Manuel version of auto.arima (same model)
+fitted13=fitted(model13)
+fitted_transformed13=fitted13*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed13,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are again really close to real sales amount (black).  
+
+```{r}
+plot(residuals(model13), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted13,main="ARIMA(4,0,1)")
+
+```
+
+Residuals show constant mean but variance differs sometimes. ACF and PACF plots tells us this is the best model in terms of lower values of ACF, PACF.
+
+### Model Comparision 
+
+```{r}
+AIC(model11)
+BIC(model11)
+AIC(model12)
+BIC(model12)
+AIC(model13)
+BIC(model13)
+```
+
+As it is seen above, model13 which is autoarima with ARIMA(4.0.1) is the best in AIC value. Second best model is MA(3).
+
+Test for fitted values:
+
+```{r}
+accu=function(actual,forecast){
+  n=length(actual)
+  error=actual-forecast
+  mean=mean(actual)
+  sd=sd(actual)
+  CV=sd/mean
+  MAPE=sum(abs(error/actual))/n
+  MAD=sum(abs(error))/n
+  MADP=sum(abs(error))/sum(abs(actual))
+  WMAPE=MAD/mean
+  l=data.frame(n,mean,sd,CV,MAPE,MAD,MADP,WMAPE)
+  return(l)
+}
+
+accu(ts11,tail(head(fitted_transformed11,369),366))
+accu(ts11,tail(head(fitted_transformed12,369),366))
+accu(ts11,tail(head(fitted_transformed13,369),366))
+
+```
+
+ARIMA(4,0,1) gives the best result in all test parameters. According to performances, ARIMA model is better than MA model, MA model is better than AR model. ARIMA(4,0,1) should be selected for further steps.
+
+## Step 3
+
+In this step, possible regressors will be examined to be used on arimax model.
+
+Code below shows correlation between sold count and the data categories.
+
+```{r}
+correlation=function(dt){  # Function to compute correlation between sold counts and other columns in the data
+  dt=as.data.frame(dt)
+  a=data.frame(data= NA, nrow=8)
+  colnames(a)=c("Variable","Correlation")
+  a[1,1]="visit count"
+  a[2,1]="basket count"
+  a[3,1]="favored count"
+  a[4,1]="category sold"
+  a[5,1]="category visit"
+  a[6,1]="category basket"
+  a[7,1]="category favored"
+  a[8,1]="category brand sold"
+  for(i in 1:8) {
+    a[i,2]=cor(dt[,4],dt[,i+4])
+  }
+  return (a)
+}
+cor(fakir$sold_count,fakir$price)
+correlation(fakir)
+```
+
+Obviously there is high correlation between sold counts and those basket count, category sold and category favored. This result actually makes sense because people tend to buy what they favored or basketed. Thanks to function created above, possible regressors are selected easily. However, potentiel problem with these regressors is that there is no future values of regressors and they should be predicted as well in the final version of the model. 
+
+## Step 4
+
+In this step, potentiel regressors will be used in the model and arimax models will be created. 
+
+```{r, warning=FALSE, error=FALSE}
+modelx1=arima(decomposed11$random,order=c(4,0,1),xreg=fakir$basket_count)
+print(modelx1)
+fittedx1=fitted(modelx1)
+fitted_transformedx1=fittedx1*decomposed11$seasonal*decomposed11$trend
+
+modelx2=arima(decomposed11$random,order=c(4,0,1),xreg=fakir$category_sold)
+print(modelx2)
+fittedx2=fitted(modelx2)
+fitted_transformedx2=fittedx2*decomposed11$seasonal*decomposed11$trend
+
+modelx3=arima(decomposed11$random,order=c(4,0,1),xreg=fakir$category_favored)
+print(modelx3)
+fittedx3=fitted(modelx3)
+fitted_transformedx3=fittedx3*decomposed11$seasonal*decomposed11$trend
+```
+
+```{r}
+AIC(model13)
+AIC(modelx1)
+AIC(modelx2)
+AIC(modelx3)
+```
+
+For initial comparision, model arimax2 (regressor as category sold) has the least AIC value. This might be a sign for selection.
+
+
+3 models are constructed according to related one of 3 regressors. Now they will be tested for last one week.
+
+```{r}
+accu(ts11,tail(head(fitted_transformed13,369),7)) # arima model
+accu(ts11,tail(head(fitted_transformedx1,369),7)) # arimax1
+accu(ts11,tail(head(fitted_transformedx2,369),7)) # arimax2
+accu(ts11,tail(head(fitted_transformedx3,369),7)) # arimax3
+```
+
+To interpret the test, all 4 models gives really close results with high performances. We actually can choose whichever we request. Eventhough arimax2 has the least AIC value, test results are close and in order to prevent possible forecast mistakes, model should be chosen as the simplest one, which is the first, classic arima(4,0,1) model without regressors.
+
+
+## Final Step
+
+After all of tests and operations done above, arima(4,0,1)  model is selected as final model due to simplicity.
+
+# Forecasting Part for This Product
+
+Forecasted Values:
+
+```{r}
+preds<-predict(model13,n.ahead = 29)$pred
+preds<-ts(preds,frequency = 7)
+last_trend_value <-tail(decomposed11$trend[!is.na(decomposed11$trend)],1)
+seasonality=decomposed11$seasonal[6:34]
+preds=preds*last_trend_value*seasonality
+print(preds)
+plot(preds,xlab="Weeks", main="Forecasts", ylab="Predictions")
+```
+
+
+# Product 5 (Tayt)
+
+
+## Step 1
+
+In this step, seasonality of each product is analysed to make appropriate decomposition.
+
+
+
+### Seasonality Analysis
+
+The plot below shows the sold count of product-5 for related period.
+
+```{r , echo=FALSE}
+ts.plot(tayt$sold_count)
+
+```
+
+As it is seen above, there is a pattern which fluctuates up at certain days and fluctuates down at some other days. That idea direct us to check autocorrelation so that determine related seosanality. 
+
+Table below shows autocorrelation values at each lag until lag 100. 
+
+```{r , echo=FALSE}
+acf(tayt$sold_count, lag=100 ,main="tayt")
+```
+
+It would not be inappropriate to say that autocorrelation function shows a pattern as well. Around 14th and 15th lag, autocorrelation values get higher and autocorrelation fades away at later lags. But frequency of 7 will be used too in decomposition part because it has given best results so far in the other products. Finally, it would not be wrong to say that there is similar pattern at each 14 days.
+
+
+### Decomposition 
+
+As far as it is seen below, there is increasing variance. So best way of decomposing is utilizing multiplicative method.
+
+```{r , echo=FALSE}
+ts.plot(tayt$sold_count, xlab= "Days", ylab= "Sold Count", main= "tayt")
+
+```
+
+#### Frequency=7
+
+Required codes are below:
+
+```{r }
+ts11=ts(tayt$sold_count, frequency = 7)
+decomposed11= decompose(ts11,type="multiplicative")
+deseasonalised11=ts11/decomposed11$seasonal
+detrend11=deseasonalised11/decomposed11$trend
+acf(detrend11,na.action = na.pass, main="Decomposed ACF freq=7")
+
+```
+
+ACF of decomposed series seems really low and acceptable. Moreover, as it is seen in the graph for random (detrended) values can be counted as stationary with stable variance and approximately constant mean. Its trend does not tell us anything important being wavy. But model might be still acceptable and good. Lastly, its seasonal component shows a decent pattern with an acceptable shape.
+
+```{r, echo= FALSE}
+plot(decomposed11)
+```
+
+#### Frequency=14
+
+Required codes are below:
+
+```{r }
+ts13=ts(tayt$sold_count, frequency = 14)
+decomposed13= decompose(ts13,type="multiplicative")
+deseasonalised13=ts13/decomposed13$seasonal
+detrend13=deseasonalised13/decomposed13$trend
+acf(detrend13,na.action = na.pass, main="Decomposed ACF freq=14")
+plot(decomposed13)
+
+```
+
+Autocorrelation seems little higher than the previous one. 
+
+```{r, echo= FALSE}
+plot(decomposed12)
+```
+
+Detrended values (random) are less stationary in this case. They do not have that constant variance and their means are less constant compared to previous one. Trend in this series is not linear, which makes forecasting suffer. Lastly, seasonal component seems similar. However, this model is worse compared to previous one because detrended random values show signs of nonstationarity.
+
+#### Frequency=15
+
+Required codes are below:
+
+```{r }
+ts12=ts(tayt$sold_count, frequency = 15)
+decomposed12= decompose(ts12,type="multiplicative")
+deseasonalised12=ts12/decomposed12$seasonal
+detrend12=deseasonalised12/decomposed12$trend
+acf(detrend12,na.action = na.pass, main="Decomposed ACF freq=15")
+plot(decomposed12)
+
+```
+
+```{r, echo= FALSE}
+plot(decomposed13)
+```
+
+Detrended values are worse in this model. They show a nonstationary behavior due to changing variance and mean. Trend component is again not linear it is more like fluctuating. Acf of detrended values are not bad. Nevertheless, its random values are worse than weekly one because of changing variance and barely constant mean. Seasonal component seems to have larger terms in number because of larger frequency.
+
+For the further parts, eventhough they give not very appropriate results, we will continue with the model of frequency = 7 due to slightly better detrended values compared to other options (Slightly more stationary with more constant mean and variance). 
+
+
+## Step 2
+
+Based on the findings in the first part, it will be proposed ARIMA models and comments on their performance will be done. 
+
+
+```{r, echo=FALSE}
+tsdisplay(decomposed11$random, lag=30, main="Random")
+```
+
+As it is understood form ACF and PACF plots, ACF and PACF plot tends to decrease. For decreasing ACF part, PACF pilot does not show significant figures after lag 2 .AR(2) model can be proposed (autocorrelation is negative at lag 2, this is another sign for AR(2)). For decreasing PACF part, ACF pilot does not show significant figures after lag 5, so MA(5) is proposed. We can also try auto.arima and compare these 3 to select the best model. Additionaly, it should be mentioned that there is no sign of seasonal arima here. 
+
+
+### AR(2)
+
+AR(2) is creted below:
+
+```{r}
+model11=arima(decomposed11$random,order=c(2,0,0))
+print(model11)
+fitted11=fitted(model11)
+fitted_transformed11=fitted11*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed11,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are really close to real sales amount (black). They are little lagged because of AR terms. 
+
+```{r, echo =FALSE}
+plot(residuals(model11), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted11,main="AR(2)")
+```
+
+Residuals show constant mean but variance changes a lot. There is still some autocorrelation from ACF and PACF
+
+### MA(5)
+
+MA(5) is creted below:
+
+```{r}
+model12=arima(decomposed11$random,order=c(0,0,5))
+print(model12)
+fitted12=fitted(model12)
+fitted_transformed12=fitted12*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed12,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are really close to real sales amount (black) in this model too.
+
+```{r, echo =FALSE}
+plot(residuals(model12), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted12, main="MA(5)")
+
+```
+
+Residuals look same as AR(2) model. But from summaries above, AIC value is better (lower) in this model. ACF and PACF plots shows autocorrelation handled better in this model.
+
+
+
+### Auto.Arima
+
+Auto Arima is created below:
+
+```{r}
+model13=auto.arima(decomposed11$random,seasonal = FALSE)
+print(model13)
+model13=arima(decomposed11$random,order=c(2,0,1)) # Manuel version of auto.arima (same model)
+fitted13=fitted(model13)
+fitted_transformed13=fitted13*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed13,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are again really close to real sales amount (black).  
+
+```{r}
+plot(residuals(model13), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted13,main="ARIMA(2,0,1)")
+
+```
+
+Residuals are still similar to previous 2 models. ACF and PACF plots tells us this is the best model in terms of lower values of ACF, PACF.
+
+### Model Comparision 
+
+```{r}
+AIC(model11)
+BIC(model11)
+AIC(model12)
+BIC(model12)
+AIC(model13)
+BIC(model13)
+```
+
+As it is seen above, model13 which is autoarima with ARIMA(2.0.1) is the best in AIC and BIC value. Second best model is MA(5).
+
+Test for fitted values:
+
+```{r}
+accu=function(actual,forecast){
+  n=length(actual)
+  error=actual-forecast
+  mean=mean(actual)
+  sd=sd(actual)
+  CV=sd/mean
+  MAPE=sum(abs(error/actual))/n
+  MAD=sum(abs(error))/n
+  MADP=sum(abs(error))/sum(abs(actual))
+  WMAPE=MAD/mean
+  l=data.frame(n,mean,sd,CV,MAPE,MAD,MADP,WMAPE)
+  return(l)
+}
+
+accu(ts11,tail(head(fitted_transformed11,369),366))
+accu(ts11,tail(head(fitted_transformed12,369),366))
+accu(ts11,tail(head(fitted_transformed13,369),366))
+
+```
+
+Test results are quite little and difference between them are close but if we have to choose one, ARIMA(2,0,1) gives slightly better result in all test parameters. According to performances, ARIMA model is better than MA model, MA model is better than AR model. ARIMA(2,0,1) should be selected for further steps.
+
+## Step 3
+
+In this step, possible regressors will be examined to be used on arimax model.
+
+Code below shows correlation between sold count and the data categories.
+
+```{r}
+correlation=function(dt){  # Function to compute correlation between sold counts and other columns in the data
+  dt=as.data.frame(dt)
+  a=data.frame(data= NA, nrow=8)
+  colnames(a)=c("Variable","Correlation")
+  a[1,1]="visit count"
+  a[2,1]="basket count"
+  a[3,1]="favored count"
+  a[4,1]="category sold"
+  a[5,1]="category visit"
+  a[6,1]="category basket"
+  a[7,1]="category favored"
+  a[8,1]="category brand sold"
+  for(i in 1:8) {
+    a[i,2]=cor(dt[,4],dt[,i+4])
+  }
+  return (a)
+}
+cor(tayt$sold_count,tayt$price)
+correlation(tayt)
+```
+
+Obviously there is high correlation between sold counts and those basket count, category sold and category favored. This result actually makes sense because people tend to buy what they favored or basketed. Thanks to function created above, possible regressors are selected easily. However, potentiel problem with these regressors is that there is no future values of regressors and they should be predicted as well in the final version of the model. 
+
+## Step 4
+
+In this step, potentiel regressors will be used in the model and arimax models will be created. 
+
+```{r, warning=FALSE, error=FALSE}
+modelx1=arima(decomposed11$random,order=c(2,0,1),xreg=tayt$basket_count)
+print(modelx1)
+fittedx1=fitted(modelx1)
+fitted_transformedx1=fittedx1*decomposed11$seasonal*decomposed11$trend
+
+modelx2=arima(decomposed11$random,order=c(2,0,1),xreg=tayt$category_sold)
+print(modelx2)
+fittedx2=fitted(modelx2)
+fitted_transformedx2=fittedx2*decomposed11$seasonal*decomposed11$trend
+
+modelx3=arima(decomposed11$random,order=c(2,0,1),xreg=tayt$category_favored)
+print(modelx3)
+fittedx3=fitted(modelx3)
+fitted_transformedx3=fittedx3*decomposed11$seasonal*decomposed11$trend
+```
+
+```{r}
+AIC(model13)
+AIC(modelx1)
+AIC(modelx2)
+AIC(modelx3)
+```
+
+For initial comparision, model arimax2 (regressor as category sold) has absolutely the least AIC value. If test results for last 1 week does not change the condition, it seems arimax2 is best option to select.
+
+
+3 models are constructed according to related one of 3 regressors. Now they will be tested for last one week.
+
+```{r}
+accu(ts11,tail(head(fitted_transformed13,369),7)) # arima model
+accu(ts11,tail(head(fitted_transformedx1,369),7)) # arimax1
+accu(ts11,tail(head(fitted_transformedx2,369),7)) # arimax2
+accu(ts11,tail(head(fitted_transformedx3,369),7)) # arimax3
+```
+
+To interpret the test, all 4 models gives really close results with high performances. Actually model arimax3 (regressor as category favored) gives the lowest WMAPE,MADP,MAD values but the difference between them is neglectable. So what to choose can be decided according to their AIC values. Arimax2 (regressor as category sold) has given remarkably low AIC value which is close to 0 (others were around 80). So we improve the model to arimax model with taking category sold as regressor. 
+
+
+## Final Step
+
+After all of tests and operations done above, arimax2 (regressor as category sold) model is selected as final model due to outstandingly low AIC value.
+
+
+# Forecasting Part for This Product
+
+Predicting new basket count values with moving averages method:
+
+```{r}
+category_sold1<-tail(tayt$category_sold,7)
+for (i in 1:26) {
+ category_sold1<-append(category_sold1,(category_sold1[i]+category_sold1[i+1]+category_sold1[i+2]+category_sold1[i+3]+category_sold1[i+4]+category_sold1[i+5]+category_sold1[i+6])/7)
+}
+category_rounded<-round(category_sold1)
+category_rounded
+```
+
+Forecasted values are below:
+
+```{r}
+category_sold_forxreg<-c(tail(tayt$category_sold,3),category_rounded[8:33])
+
+preds<-predict(modelx2,n.ahead = 29,newxreg = category_sold_forxreg)$pred
+preds<-ts(preds,frequency = 7)
+last_trend_value <-tail(decomposed11$trend[!is.na(decomposed11$trend)],1)
+seasonality=decomposed11$seasonal[6:34]
+preds=preds*last_trend_value*seasonality
+print(preds)
+plot(preds,xlab="Weeks", main="Forecasts", ylab="Predictions")
+```
+
+
+# Product 6 (Diş Fırçası)
+
+
+## Step 1
+
+In this step, seasonality of each product is analysed to make appropriate decomposition.
+
+
+
+### Seasonality Analysis
+
+The plot below shows the sold count of product-6 for related period.
+
+```{r , echo=FALSE}
+ts.plot(firca$sold_count)
+
+```
+
+As it is seen above, there is a pattern which fluctuates up at certain days and fluctuates down at some other days. That idea direct us to check autocorrelation so that determine related seosanality. 
+
+Table below shows autocorrelation values at each lag until lag 100. 
+
+```{r , echo=FALSE}
+acf(firca$sold_count, lag=100 ,main="Diş Fırçası")
+```
+
+In this case, autocorrelation is too much at each lag. But frequency of 7,14 and 30 will be examined in decomposition part and seasonality will be selected accordingly. As it will be appeared in the next part, frequancy=7 gives best stationary case and lowest acf values after decomposition. So it would not be wrong to say that there is approximately weekly seasonality.
+
+
+### Decomposition 
+
+As far as it is seen below, there is increasing variance. So best way of decomposing is utilizing multiplicative method.
+
+```{r , echo=FALSE}
+ts.plot(firca$sold_count, xlab= "Days", ylab= "Sold Count", main= "Diş Fırçası")
+
+```
+
+#### Frequency=7
+
+Required codes are below:
+
+```{r }
+ts11=ts(firca$sold_count, frequency = 7)
+decomposed11= decompose(ts11,type="multiplicative")
+deseasonalised11=ts11/decomposed11$seasonal
+detrend11=deseasonalised11/decomposed11$trend
+acf(detrend11,na.action = na.pass, main="Decomposed ACF freq=7")
+
+```
+
+ACF of decomposed series seems really low and acceptable except for a few lags. As it is seen in the graph for random (detrended) values are not quite stationary with decreasing variance and changing mean. Its trend tend to increase. But model might be still selected because the other options are even worse. Lastly, its seasonal component shows a decent pattern with an acceptable shape.
+
+```{r, echo= FALSE}
+plot(decomposed11)
+```
+
+#### Frequency=14
+
+Required codes are below:
+
+```{r }
+ts13=ts(firca$sold_count, frequency = 14)
+decomposed13= decompose(ts13,type="multiplicative")
+deseasonalised13=ts13/decomposed13$seasonal
+detrend13=deseasonalised13/decomposed13$trend
+acf(detrend13,na.action = na.pass, main="Decomposed ACF freq=14")
+plot(decomposed13)
+
+```
+
+Autocorrelation seems little higher than the previous one but still better than the one before decomposition. 
+
+```{r, echo= FALSE}
+plot(decomposed12)
+```
+
+Detrended values (random) are even less stationary in this case. They have jumps in variance which decreases too. But their means are more constant compared to previous one. Trend in this series is inclined to go up. Lastly, seasonal component seems similar. However, this model is worse compared to previous one because detrended random values show signs of nonstationarity more than the one with frequancy=7.
+
+#### Frequency=30
+
+Required codes are below:
+
+```{r }
+ts12=ts(firca$sold_count, frequency = 30)
+decomposed12= decompose(ts12,type="multiplicative")
+deseasonalised12=ts12/decomposed12$seasonal
+detrend12=deseasonalised12/decomposed12$trend
+acf(detrend12,na.action = na.pass, main="Decomposed ACF freq=30")
+plot(decomposed12)
+
+```
+
+```{r, echo= FALSE}
+plot(decomposed13)
+```
+
+Detrended values are the worst in this model. They show clear nonstationary behavior due to changing variance and mean. Trend component is again inclined to increase. Acf of detrended values are not quite bad. Nevertheless, its random values are worse than weekly one because of changing variance and inconstant mean. Seasonal component seems to have larger terms in number because of larger frequency.
+
+For the further parts, eventhough all of 3 are not quite good, frequency=7 is acceptable and the best one.So, we will continue with the model of frequency = 7 due to slightly better detrended values compared to other options (Slightly more stationary with more constant mean and variance). 
+
+
+## Step 2
+
+Based on the findings in the first part, it will be proposed ARIMA models and comments on their performance will be done. 
+
+
+```{r, echo=FALSE}
+tsdisplay(decomposed11$random, lag=30, main="Random")
+```
+
+As it is understood form ACF and PACF plots, ACF and PACF plot tends to decrease. For decreasing ACF part, PACF pilot does not show significant figures after lag 2 .AR(2) model can be proposed (autocorrelation is negative at lag 2, this is another sign for AR(2)). For decreasing PACF part, ACF pilot does not show significant figures after lag 5, so MA(5) is proposed. We can also try auto.arima and compare these 3 to select the best model. Additionaly, it should be mentioned that there is no sign of seasonal arima here. 
+
+
+### AR(3)
+
+AR(3) is creted below:
+
+```{r}
+model11=arima(decomposed11$random,order=c(3,0,0))
+print(model11)
+fitted11=fitted(model11)
+fitted_transformed11=fitted11*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed11,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are really close to real sales amount (black). They are little lagged because of AR terms. 
+
+```{r, echo =FALSE}
+plot(residuals(model11), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted11,main="AR(3)")
+```
+
+Residuals show constant mean but variance changes at some points. There is still some autocorrelation from ACF and PACF
+
+### MA(5)
+
+MA(5) is creted below:
+
+```{r}
+model12=arima(decomposed11$random,order=c(0,0,5))
+print(model12)
+fitted12=fitted(model12)
+fitted_transformed12=fitted12*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed12,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are really close to real sales amount (black) in this model too.
+
+```{r, echo =FALSE}
+plot(residuals(model12), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted12, main="MA(5)")
+
+```
+
+Residuals look similar to AR(3) model with little better variance. But from summaries above, AIC value is better (lower) in this model. ACF and PACF plots shows autocorrelation is handled better in this model.
+
+
+
+### Auto.Arima
+
+Auto Arima is created below:
+
+```{r}
+model13=auto.arima(decomposed11$random,seasonal = FALSE)
+print(model13)
+model13=arima(decomposed11$random,order=c(2,0,1)) # Manuel version of auto.arima (same model)
+fitted13=fitted(model13)
+fitted_transformed13=fitted13*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed13,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are again really close to real sales amount (black).  
+
+```{r}
+plot(residuals(model13), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted13,main="ARIMA(2,0,1)")
+
+```
+
+Residuals are still similar to previous 2 models. ACF and PACF plots tells us this is the best model in terms of lower values of ACF, PACF. Sometimes auto.arima may not be able to find best model but in this condition, it worked very well.
+
+### Model Comparision 
+
+```{r}
+AIC(model11)
+BIC(model11)
+AIC(model12)
+BIC(model12)
+AIC(model13)
+BIC(model13)
+```
+
+As it is seen above, model13 which is autoarima with ARIMA(2.0.1) is the best in AIC and BIC value. Second best model is MA(5).
+
+Test for fitted values:
+
+```{r}
+accu=function(actual,forecast){
+  n=length(actual)
+  error=actual-forecast
+  mean=mean(actual)
+  sd=sd(actual)
+  CV=sd/mean
+  MAPE=sum(abs(error/actual))/n
+  MAD=sum(abs(error))/n
+  MADP=sum(abs(error))/sum(abs(actual))
+  WMAPE=MAD/mean
+  l=data.frame(n,mean,sd,CV,MAPE,MAD,MADP,WMAPE)
+  return(l)
+}
+
+accu(ts11,tail(head(fitted_transformed11,369),366))
+accu(ts11,tail(head(fitted_transformed12,369),366))
+accu(ts11,tail(head(fitted_transformed13,369),366))
+
+```
+
+Test results tell all 3 models are close to each other but arima(2,0,1) model is slightly better with higher performance. It has lower error terms. So it will be continued with arima(2,0,1).
+
+## Step 3
+
+In this step, possible regressors will be examined to be used on arimax model.
+
+Code below shows correlation between sold count and the data categories.
+
+```{r}
+correlation=function(dt){  # Function to compute correlation between sold counts and other columns in the data
+  dt=as.data.frame(dt)
+  a=data.frame(data= NA, nrow=8)
+  colnames(a)=c("Variable","Correlation")
+  a[1,1]="visit count"
+  a[2,1]="basket count"
+  a[3,1]="favored count"
+  a[4,1]="category sold"
+  a[5,1]="category visit"
+  a[6,1]="category basket"
+  a[7,1]="category favored"
+  a[8,1]="category brand sold"
+  for(i in 1:8) {
+    a[i,2]=cor(dt[,4],dt[,i+4])
+  }
+  return (a)
+}
+cor(firca$sold_count,firca$price)
+correlation(firca)
+```
+
+Obviously there is high correlation between sold counts and those visit count, basket count and favored count. Price data is dirty in this product so best operation to do is not to use price as regressor. However, potentiel problem with these regressors is that there is no future values of regressors and they should be predicted as well in the final version of the model. 
+
+## Step 4
+
+In this step, potentiel regressors will be used in the model and arimax models will be created. 
+
+```{r, warning=FALSE, error=FALSE}
+modelx1=arima(decomposed11$random,order=c(2,0,1),xreg=firca$visit_count)
+print(modelx1)
+fittedx1=fitted(modelx1)
+fitted_transformedx1=fittedx1*decomposed11$seasonal*decomposed11$trend
+
+modelx2=arima(decomposed11$random,order=c(2,0,1),xreg=firca$basket_count)
+print(modelx2)
+fittedx2=fitted(modelx2)
+fitted_transformedx2=fittedx2*decomposed11$seasonal*decomposed11$trend
+
+modelx3=arima(decomposed11$random,order=c(2,0,1),xreg=firca$favored_count)
+print(modelx3)
+fittedx3=fitted(modelx3)
+fitted_transformedx3=fittedx3*decomposed11$seasonal*decomposed11$trend
+```
+
+```{r}
+AIC(model13)
+AIC(modelx1)
+AIC(modelx2)
+AIC(modelx3)
+```
+
+For initial comparision, model arimax2 (regressor as basket count,which has the most correlation value with 0.95) has the least AIC value. If test results for last 1 week does not change the condition, it seems arimax2 is best option to select.
+
+
+3 models are constructed according to related one of 3 regressors. Now they will be tested for last one week.
+
+```{r}
+accu(ts11,tail(head(fitted_transformed13,369),7)) # arima model
+accu(ts11,tail(head(fitted_transformedx1,369),7)) # arimax1
+accu(ts11,tail(head(fitted_transformedx2,369),7)) # arimax2
+accu(ts11,tail(head(fitted_transformedx3,369),7)) # arimax3
+```
+
+To interpret the test model arimax2 (regressor as basket count) gives the lowest WMAPE,MADP,MAD values. So model is enhanced with new regressor.
+
+
+# Forecasting Part for This Product
+
+Predicting new basket count values with moving averages method:
+
+```{r}
+basket1<-tail(firca$basket_count,7)
+for (i in 1:26) {
+  basket1<-append(basket1,(basket1[i]+basket1[i+1]+basket1[i+2]+basket1[i+3]+basket1[i+4]+basket1[i+5]+basket1[i+6])/7)
+}
+basket_rounded<-round(basket1)
+basket_rounded
+```
+
+Forecasted values are below:
+
+```{r}
+basket_count_forxreg<-c(tail(firca$basket_count,3),basket_rounded[8:33])
+preds<-predict(modelx2,n.ahead = 29,newxreg = basket_count_forxreg)$pred
+preds<-ts(preds,frequency = 7)
+last_trend_value <-tail(decomposed11$trend[!is.na(decomposed11$trend)],1)
+seasonality=decomposed11$seasonal[6:34]
+preds=preds*last_trend_value*seasonality
+print(preds)
+plot(preds,xlab="Weeks", main="Forecasts", ylab="Predictions")
+```
+
+
+## Final Step
+
+After all of tests and operations done above, arimax2 (regressor as basket count) model is selected as final model.
+
+
+
+# Product 7 (Mont)
+
+Necessary starting operations are done again.
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(dplyr)
+require(mgcv)
+library(fpp)
+require(gratia)
+library(readxl)
+library(lubridate)
+library(forecast)
+library(zoo)
+library(stringr)
+library(stats)
+library(urca)
+
+g13<-read_excel("g13.xlsx")
+dat<-as.data.table(g13)
+mont<-dat[2605:2976,]
+head(mont)
+tail(mont)
+mont[is.na(price)==T,price:=0] ## filling the missing price values
+mont
+```
+
+```{r}
+mont_sold_ts<-ts(mont$sold_count)
+ts.plot(mont_sold_ts)
+acf(mont_sold_ts)
+```
+
+  We do not have the sufficient sales data to build an arima model. Therefore, we will use linear regression models.
+  
+  Firstly, we will prepare the data table including our attributes for lm model.
+  
+```{r}
+mont_table<-data.table(sales=as.numeric(mont_sold_ts))
+str(mont_table)
+daynumber<-seq(1,7,by=1)
+mont_table<-cbind(mont_table,daynumber)
+mont_table[,prices:=mont$price]
+mont_table[,basket_count:=mont$basket_count]
+mont_table[,trend:=1:.N]
+mont_table
+```
+  
+  Now, We're going to try different lm models with different regressors.
+  
+```{r}
+fit1<-lm(sales~trend+prices+basket_count+as.factor(daynumber),data = mont_table)
+summary(fit1)
+checkresiduals(fit1)
+```
+
+
+```{r}
+fit2<-lm(sales~ prices+basket_count,data = mont_table)
+summary(fit2)
+checkresiduals(fit2)
+```
+  
+```{r}
+fit3<-lm(sales~0+prices+basket_count,data = mont_table)
+summary(fit3)
+checkresiduals(fit3)
+
+```
+  
+  Models we build do not have satisfactory ACF plots. However, their mean residuals are close to 0. We will go on with the fit3 model since it has the highest R-squared value. We will add fitted values and residuals to our data table.
+  
+```{r}
+mont_table[,fitted1:=fitted(fit3)]
+mont_table[,residuals1:=residuals(fit3)]
+mont_table
+```
+  
+  We will visualize our fitted values and actual values.
+  
+```{r}
+mont_table %>%
+  ggplot(aes(x=fitted1, y=residuals1)) + 
+  geom_point()
+mont_table %>%
+  ggplot(aes(x=fitted1, y=sales)) + 
+  geom_point() +
+  geom_abline(slope=1, intercept=0)
+```
+  
+  Now, we will add price and basket count values for the days we will predict. We used moving averages method to predict prices and basket count by using values of last 7 observations. We also added trend and daynumbers to our data table.
+  
+```{r}
+basket1<-c(6,6,7,5,13,17,15)
+for (i in 1:26) {
+  basket1<-append(basket1,(basket1[i]+basket1[i+1]+basket1[i+2]+basket1[i+3]+basket1[i+4]+basket1[i+5]+basket1[i+6])/7)
+}
+basket_rounded<-round(basket1)
+basket_rounded
+price1<-c(299.99,299.99,299.99,299.99,299.99,299.99,499.99)
+for (j in 1:26) {
+  price1<-append(price1,(price1[j]+price1[j+1]+price1[j+2]+price1[j+3]+price1[j+4]+price1[j+5]+price1[j+6])/7)
+}
+price1
+a<-seq(2,7)
+b<-rep(seq(1,7),2)
+c<-seq(1,6)
+d<-c(a,b,c)
+day_info<-d
+mont_table=rbind(mont_table,data.table(daynumber=as.factor(day_info)),fill=T)
+mont_table[,trend:=1:.N]
+mont_table[is.na(prices)==T,prices:=price1[8:33]]
+mont_table[is.na(basket_count)==T,basket_count:=basket_rounded[8:33]]
+mont_table
+```
+
+# Forecasting Part for This Product
+
+ Now, we are ready to predict sales.
+ 
+```{r}
+predict(fit3,mont_table[is.na(fitted1)==T])
+mont_table[is.na(fitted1)==T,fitted1:=predict(fit3,mont_table[is.na(fitted1)==T])]
+
+print(tail(mont_table$fitted1,26))
+ts.plot(tail(mont_table$fitted1,26), main="Forecast for Sales")
+```
+
+
+# Product 8 (Bikini Model-1)
+
+## Step 1
+
+In this step, seasonality of each product is analyzed to make appropriate decomposition.
+
+```{r, include=FALSE}
+bik_1<-dat[2132:2232,] # data table without null and zero values of sold count for bikini model-1
+```
+
+
+### Seasonality Analysis
+
+The plot below shows the sold count of product-8 for related period.
+
+```{r , echo=FALSE}
+ts.plot(bik_1$sold_count, xlab= "Days", ylab= "Sold Count", main= "Bikini Model-1")
+
+```
+
+As it is seen above, there is a pattern which fluctuates up at certain days and fluctuates down at some other days.The variance seems not so constant. That idea direct us to check autocorrelation so that determine related seasonality. 
+
+Table below shows autocorrelation values at each lag until lag 100. 
+
+```{r , echo=FALSE}
+acf(bik_1$sold_count, lag=100 ,main="Bikini Model-1")
+```
+
+It would not be inappropriate to say that autocorrelation function shows a pattern as well. Around 10th and 44th lag, autocorrelation values get higher and autocorrelation fades away at later lags. Normally, time series object of sold count for product-8 ought to be chosen at the frequency of 10, which will cover other autocorrelations too. However, as it will be observed in the next step; if lag 7 is chosen, the decomposition results will be better compared to lag 10. And at that point, we can cover some other autocorrelation lags better with getting a more stationary data, so it would not be wrong to say that there is weekly seasonality even if autocorrelation function does not show us it directly.
+
+
+### Decomposition 
+
+As far as it is seen below, there is a decreasing then increasing variance. So best way of decomposing is utilizing multiplicative method.
+
+```{r , echo=FALSE}
+ts.plot(bik_1$sold_count, xlab= "Days", ylab= "Sold Count", main= "Bikini Model-1")
+
+```
+
+#### Frequency=7
+
+Required codes are below:
+
+```{r warning=FALSE}
+ts11=ts(bik_1$sold_count, frequency = 7)
+decomposed11= decompose(ts11,type="multiplicative")
+deseasonalised11=ts11/decomposed11$seasonal
+detrend11=deseasonalised11/decomposed11$trend
+acf(detrend11,na.action = na.pass, main="Decomposed ACF freq=7")
+```
+
+ACF of decomposed series are values that are not above the significance levels. Moreover, as it is seen in the graph for random (detrended) values are quite stationary with stable variance and nearly constant mean. Its trend seems to increase with fluctuations in the later parts of the time series data which may result in possible errors in the forecast. But model is still acceptable and good. Lastly, its seasonal component shows a decent pattern with an acceptable shape.
+
+```{r, echo= FALSE}
+plot(decomposed11)
+```
+
+
+#### Frequency=15
+
+Required codes are below:
+
+```{r }
+ts12=ts(bik_1$sold_count, frequency = 15)
+decomposed12= decompose(ts12,type="multiplicative")
+deseasonalised12=ts12/decomposed12$seasonal
+detrend12=deseasonalised12/decomposed12$trend
+acf(detrend12,na.action = na.pass, main="Decomposed ACF freq=15")
+```
+
+The reason why acf values are higher at frequency 15 might be that in Turkey, most people get their salary either at day 1 or day 15 of related month. ([Source](https://ailevecalisma.gov.tr/media/3920/maas.pdf)) This reality may give us low acf values but this product did not give the values we want. Probably, people tend to shop more after getting their salary. Even if people generally use credit cards, getting fresh money gives confidence to people to spend more on shopping products. However, as it is mentioned above, acf result of detrended series is worse now. Moreover, the graph below shows the plot of detrended values, which is worse than the one in frequency=7. 
+
+```{r, echo= FALSE}
+plot(decomposed12)
+```
+
+Detrended values (random) are less stationary in this case. They do not have constant variance and their means are less constant compared to previous one. Trend in this series are not so fluctuating but it moves up an down through time. Lastly, seasonal component seems similar. However, this model is worse compared to previous one because detrended random values shows more nonstationarity.
+
+#### Frequency=30
+
+Required codes are below:
+
+```{r }
+ts13=ts(bik_1$sold_count, frequency = 30)
+decomposed13= decompose(ts13,type="multiplicative")
+deseasonalised13=ts13/decomposed13$seasonal
+detrend13=deseasonalised13/decomposed13$trend
+acf(detrend13,na.action = na.pass, main="Decomposed ACF freq=30")
+
+```
+
+```{r, echo= FALSE}
+plot(decomposed13)
+```
+
+Detrended values are worst in this model. They show a nonstationary behavior due to changing variance and nonzero mean. Trend component seems to increase more compared to the other two and it fluctuates less. However, first two acf of detrended values are high and not as requested. Its random values are also the worst of 3 models. Seasonal component seems to have larger range, which changes results more.
+
+For the further parts, we will continue with the model of frequency = 7.
+
+
+## Step 2
+
+Based on the findings in the first part, it will be proposed ARIMA models and comments on their performance will be done. 
+
+
+```{r, echo=FALSE}
+tsdisplay(decomposed11$random, lag=30, main="Random")
+```
+
+As it is understood form ACF and PACF plots, both have high correlations in some parts of the plots. For decreasing ACF part, PACF plot does not show significant figures after lag 3. AR(3) model can be proposed. For decreasing PACF part, ACF plot does not show significant figures after lag 2, so MA(2) is proposed. We can also try auto.arima and compare these 3 to select the best model. It will probably the 3rd model with the auto.arima gives us the best model to build on. Additionaly, it should be mentioned that there is no sign of seasonal arima here. 
+
+
+### AR(3)
+
+AR(3) is creted below:
+
+```{r}
+model11=arima(decomposed11$random,order=c(3,0,0))
+print(model11)
+fitted11=fitted(model11)
+fitted_transformed11=fitted11*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed11,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are close to real sales amount (black). However this is a simple model and does not fit a high percentage amount of data points. They are little lagged because of the nature of AR models. 
+
+```{r, echo =FALSE}
+plot(residuals(model11), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted11,main="AR(3)")
+```
+
+Residuals show constant mean but variance differs sometimes. ACF and PACF plot still shows some autocorrelation signs that are above the significance levels.
+
+### MA(2)
+
+MA(2) is creted below:
+
+```{r}
+model12=arima(decomposed11$random,order=c(0,0,2))
+print(model12)
+fitted12=fitted(model12)
+fitted_transformed12=fitted12*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed12,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are really close to real sales amount (black) in this model too. It is lagged due to the nature of the MA models.
+
+```{r, echo =FALSE}
+plot(residuals(model12), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted12, main="MA(2)")
+
+```
+
+Residuals show constant mean but variance seems higher first then lower in the later parts in this model. Eventhough ACF and PACF values are better in this model, they are still high.
+
+
+
+### Auto.Arima
+
+Auto Arima is created below:
+
+```{r}
+model13=auto.arima(decomposed11$random,seasonal=FALSE)
+print(model13)
+model13=arima(decomposed11$random,order=c(2,0,1)) # Manuel version of auto.arima (same model)
+fitted13=fitted(model13)
+fitted_transformed13=fitted13*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed13,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are again really close to real sales amount (black). The model fits more when variance is low. Outlier points lowers the fitting point of our model.
+
+```{r}
+plot(residuals(model13), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted13,main="ARIMA(2,0,1)")
+```
+
+Residuals show constant mean but variance differs sometimes but better than the two previous models. ACF and PACF plots tells us this is the best model in terms of lower values of ACF, PACF.
+
+### Model Comparision 
+
+```{r}
+AIC(model11)
+BIC(model11)
+AIC(model12)
+BIC(model12)
+AIC(model13)
+BIC(model13)
+```
+
+As it is seen above, model13 which is autoarima with ARIMA(2,0,1) is the best model with lower values. ARIMA(2,0,1) should be selected for further steps.
+
+Test for fitted values:
+
+```{r}
+accu=function(actual,forecast){
+  n=length(actual)
+  error=actual-forecast
+  mean=mean(actual)
+  sd=sd(actual)
+  CV=sd/mean
+  MAPE=sum(abs(error/actual))/n
+  MAD=sum(abs(error))/n
+  MADP=sum(abs(error))/sum(abs(actual))
+  WMAPE=MAD/mean
+  l=data.frame(n,mean,sd,CV,MAPE,MAD,MADP,WMAPE)
+  return(l)
+}
+
+accu(ts11,tail(head(fitted_transformed11,98),95))
+accu(ts11,tail(head(fitted_transformed12,98),95))
+accu(ts11,tail(head(fitted_transformed13,98),95))
+
+```
+
+Again third result which is ARIMA(2,0,1) gives the best result with lower errors in MAPE, MAD, MADP, WMAPE tests. The remaining tests are equal in all three models due to the saem data we use in all our models.
+
+## Step 3
+
+In this step, possible regressors will be examined to be used on arimax model.
+
+Code below shows correlation between sold count and the data categories.
+
+```{r}
+correlation=function(dt){  # Function to compute correlation between sold counts and other columns in the data
+  dt=as.data.frame(dt)
+  a=data.frame(data= NA, nrow=8)
+  colnames(a)=c("Variable","Correlation")
+  a[1,1]="visit count"
+  a[2,1]="basket count"
+  a[3,1]="favored count"
+  a[4,1]="category sold"
+  a[5,1]="category visit"
+  a[6,1]="category basket"
+  a[7,1]="category favored"
+  a[8,1]="category brand sold"
+  for(i in 1:8) {
+    a[i,2]=cor(dt[,4],dt[,i+4])
+  }
+  return (a)
+}
+correlation(bik_1)
+cor(bik_1$sold_count,bik_1$price)
+```
+
+Obviously there is high correlation between sold counts and those basket count, visit count and category sold. This result actually makes sense because people tend to buy what they visit more and when the category has raised its attention all products sales' will increase as well. Thanks to function created above, possible regressors are selected easily. However, potential problem with these regressors is that there is no future values of regressors and they should be predicted as well in the final version of the model. 
+
+## Step 4
+
+In this step, potential regressors will be used in the model and arimax models will be created. 
+
+```{r, warning=FALSE, error=FALSE}
+modelx1=arima(decomposed11$random,order=c(2,0,1),xreg=bik_1$basket_count)
+print(modelx1)
+fittedx1=fitted(modelx1)
+fitted_transformedx1=fittedx1*decomposed11$seasonal*decomposed11$trend
+
+modelx2=arima(decomposed11$random,order=c(2,0,1),xreg=bik_1$visit_count)
+print(modelx2)
+fittedx2=fitted(modelx2)
+fitted_transformedx2=fittedx2*decomposed11$seasonal*decomposed11$trend
+
+
+modelx3=arima(decomposed11$random,order=c(2,0,1),xreg=bik_1$category_sold)
+print(modelx3)
+fittedx3=fitted(modelx3)
+fitted_transformedx3=fittedx3*decomposed11$seasonal*decomposed11$trend
+```
+
+3 models are constructed according to related one of 3 regressors. Now they will be tested for last one week.
+
+```{r}
+accu(ts11,tail(head(fitted_transformed13,98),7)) # arima model
+accu(ts11,tail(head(fitted_transformedx1,98),7)) # arimax1
+accu(ts11,tail(head(fitted_transformedx2,98),7)) # arimax2
+accu(ts11,tail(head(fitted_transformedx3,98),7)) # arimax3
+```
+
+As it is seen in the results, they all have similar results but model arimax1 is slightly better in terms of lower WMAPE and other parameters. Moreover, model shows better performance with arimax1 (regressor as basket count) than arima model in previous step. 
+
+
+## Final Step
+
+After all of tests and operations done above, arimax1 model gives best results and it is selected as final model.
+
+
+# Forecasting Part for This Product
+
+Preparing basket count values with moving averages method:
+
+```{r}
+basket1<-tail(bik_1$basket_count,7)
+for (i in 1:26) {
+  basket1<-append(basket1,(basket1[i]+basket1[i+1]+basket1[i+2]+basket1[i+3]+basket1[i+4]+basket1[i+5]+basket1[i+6])/7)
+}
+basket_rounded<-round(basket1)
+basket_rounded
+```
+
+Forecasting results are below:
+
+```{r}
+modelx1=arima(decomposed11$random,order=c(2,0,1),xreg=bik_1$basket_count)
+basket_count_forxreg<-c(tail(bik_1$basket_count,3),basket_rounded[8:33])
+preds<-predict(modelx1,n.ahead = 29,newxreg = basket_count_forxreg)$pred
+preds<-ts(preds,frequency = 7)
+last_trend_value <-tail(decomposed11$trend[!is.na(decomposed11$trend)],1)
+seasonality=decomposed11$seasonal[1:28]
+preds=preds*last_trend_value*seasonality
+print(preds)
+ts.plot(preds,xlab = "Weeks", ylab="Predictions", main="Forecasts")
+
+```
+
+
+
+
+# Product 9 (Bikini Model-2)
+
+## Step 1
+
+In this step, seasonality of each product is analyzed to make appropriate decomposition.
+
+```{r, include=FALSE}
+bik_2<-dat[2132:2232,] # data table without null and zero values of sold count for bikini model-2
+```
+
+### Seasonality Analysis
+
+The plot below shows the sold count of product-9 for related period.
+
+```{r , echo=FALSE}
+ts.plot(bik_2$sold_count, xlab= "Days", ylab= "Sold Count", main= "Bikini Model-2")
+
+```
+
+As it is seen above, there is a pattern which fluctuates up and down.The variance seems increasing through time. That idea direct us to check autocorrelation so that determine related seasonality. 
+
+Table below shows autocorrelation values at each lag until lag 100. 
+
+```{r , echo=FALSE}
+acf(bik_2$sold_count, lag=100 ,main="Bikini Model-2")
+```
+
+The first lags have decreased over time and that reflects us a increasing trend of our data. Since our data is mostly deleted there are only 2 significant ACF values of lag1 and lag2. We can not speak certainly because of the dirty nature of data but it would not be incorrect to say that autocorrelation increases a little at lag 7, which makes one think of weekly seasonality.
+
+
+
+### Decomposition 
+
+As far as it is seen below, there is a decreasing then increasing variance. So best way of decomposing is utilizing multiplicative method.
+
+```{r , echo=FALSE}
+ts.plot(bik_2$sold_count, xlab= "Days", ylab= "Sold Count", main= "Bikini Model-2")
+
+```
+
+#### Frequency=7
+
+Required codes are below:
+
+```{r warning=FALSE}
+ts11=ts(bik_2$sold_count, frequency = 7)
+decomposed11= decompose(ts11,type="multiplicative")
+deseasonalised11=ts11/decomposed11$seasonal
+detrend11=deseasonalised11/decomposed11$trend
+acf(detrend11,na.action = na.pass, main="Decomposed ACF freq=7")
+```
+
+ACF of decomposed series are values that are not above the significance levels. Moreover, as it is seen in the graph for random (detrended) values are quite stationary with stable variance and nearly constant mean. Its trend seems to increase with fluctuations which may result in possible errors in the forecast. But model is still acceptable and good. Lastly, its seasonal component shows a decent pattern with an acceptable shape.
+
+```{r, echo= FALSE}
+plot(decomposed11)
+```
+
+
+#### Frequency=15
+
+Required codes are below:
+
+```{r }
+ts12=ts(bik_2$sold_count, frequency = 15)
+decomposed12= decompose(ts12,type="multiplicative")
+deseasonalised12=ts12/decomposed12$seasonal
+detrend12=deseasonalised12/decomposed12$trend
+acf(detrend12,na.action = na.pass, main="Decomposed ACF freq=15")
+```
+
+The reason why acf values are higher at frequency 15 might be that in Turkey, most people get their salary either at day 1 or day 15 of related month. ([Source](https://ailevecalisma.gov.tr/media/3920/maas.pdf)) This reality may give us low acf values and in the lag 1.0 this gives us a significant autocorrelation. It corresponds to the 15th day of the tiem series data. Probably, people tend to shop more after getting their salary. Even if people generally use credit cards, getting fresh money gives confidence to people to spend more on shopping products. However, as it is mentioned above, acf result of detrended series is worse now. Moreover, the graph below shows the plot of detrended values, which is worse than the one in frequency=7. 
+
+```{r, echo= FALSE}
+plot(decomposed12)
+```
+
+Detrended values (random) are less stationary in this case. They do not have constant variance but their mean isconstant compared to previous one. Trend in this series are not so fluctuating but it moves up an down through time. Lastly, seasonal component seems similar. However, this model is worse compared to previous one because detrended random values shows more nonstationarity.
+
+
+For the further parts, we will continue with the model of frequency = 7.
+
+
+## Step 2
+
+Based on the findings in the first part, it will be proposed ARIMA models and comments on their performance will be done. 
+
+
+```{r, echo=FALSE}
+tsdisplay(decomposed11$random, lag=30, main="Random")
+```
+
+There is no clear sign of which model to use. So, AR(2),MA(1) and ARIMA(2,0,1) will be examined.
+
+### AR(2)
+
+AR(2) is creted below:
+
+```{r}
+model11=arima(decomposed11$random,order=c(2,0,0))
+print(model11)
+fitted11=fitted(model11)
+fitted_transformed11=fitted11*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed11,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are close to real sales amount (black). However this is a simple model with not a lot of data points and does not fit a high percentage amount of data points. They are little lagged because of the nature of AR models. 
+
+```{r, echo =FALSE}
+plot(residuals(model11), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted11,main="AR(2)")
+```
+
+Residuals show constant mean but variance differs sometimes. ACF and PACF plot still shows some autocorrelation signs that are above the significance levels at lag 7.
+
+### MA(1)
+
+MA(1) is creted below:
+
+```{r}
+model12=arima(decomposed11$random,order=c(0,0,1))
+print(model12)
+fitted12=fitted(model12)
+fitted_transformed12=fitted12*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed12,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are really close to real sales amount (black) in this model too. It is lagged due to the nature of the MA models.
+
+```{r, echo =FALSE}
+plot(residuals(model12), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted12, main="MA(1)")
+
+```
+
+Residuals show fluctuating mean and variance seems not very good in this model.However, ACF and PACF values are better in this model,
+
+
+
+### ARIMA(2,0,1)
+
+Arima(2,0,1) is created below:
+
+```{r}
+model13=arima(decomposed11$random,order =c(2,0,1))
+print(model13)
+fitted13=fitted(model13)
+fitted_transformed13=fitted13*decomposed11$seasonal*decomposed11$trend
+plot(ts11,main="fitted vs real",ylab="Sold Count", xlab="Days")
+points(fitted_transformed13,type = "l",col="blue")
+
+```
+
+Fitted values (blue) are again really close to real sales amount (black). The model fits more when variance is low. Outlier points lowers the fitting point of our model.
+
+```{r}
+plot(residuals(model13), xlab="Days", ylab="Values", main="Residuals")
+tsdisplay(fitted13,main="ARIMA(2,0,1)")
+```
+
+Residuals show constant mean but variance is too high and fluctuating.
+
+### Model Comparision 
+
+```{r}
+AIC(model11)
+BIC(model11)
+AIC(model12)
+BIC(model12)
+AIC(model13)
+BIC(model13)
+```
+
+As it is seen above, model13 which is autoarima with ARIMA(2,0,1) is the best model with lower values. ARIMA(2,0,1) should be selected for further steps.
+
+Test for fitted values:
+
+```{r}
+accu=function(actual,forecast){
+  n=length(actual)
+  error=actual-forecast
+  mean=mean(actual)
+  sd=sd(actual)
+  CV=sd/mean
+  MAPE=sum(abs(error/actual))/n
+  MAD=sum(abs(error))/n
+  MADP=sum(abs(error))/sum(abs(actual))
+  WMAPE=MAD/mean
+  l=data.frame(n,mean,sd,CV,MAPE,MAD,MADP,WMAPE)
+  return(l)
+}
+
+accu(ts11,tail(head(fitted_transformed11,31),28))
+accu(ts11,tail(head(fitted_transformed12,31),28))
+accu(ts11,tail(head(fitted_transformed13,31),28))
+
+```
+
+Again third result which is ARIMA(2,0,1) gives the best result with lower errors in MAPE, MAD, MADP, WMAPE tests. 
+
+## Step 3
+
+In this step, possible regressors will be examined to be used on arimax model.
+
+Code below shows correlation between sold count and the data categories.
+
+```{r}
+correlation=function(dt){  # Function to compute correlation between sold counts and other columns in the data
+  dt=as.data.frame(dt)
+  a=data.frame(data= NA, nrow=8)
+  colnames(a)=c("Variable","Correlation")
+  a[1,1]="visit count"
+  a[2,1]="basket count"
+  a[3,1]="favored count"
+  a[4,1]="category sold"
+  a[5,1]="category visit"
+  a[6,1]="category basket"
+  a[7,1]="category favored"
+  a[8,1]="category brand sold"
+  for(i in 1:8) {
+    a[i,2]=cor(dt[,4],dt[,i+4])
+  }
+  return (a)
+}
+correlation(bik_2)
+cor(bik_2$sold_count,bik_2$price)
+```
+
+Obviously there is high correlation between sold counts and those basket count, visit count and favıred count. This result actually makes sense because people tend to buy what they visit more and when the category has raised its attention all products sales' will increase as well. Thanks to function created above, possible regressors are selected easily. However, potential problem with these regressors is that there is no future values of regressors and they should be predicted as well in the final version of the model. 
+
+## Step 4
+
+In this step, potential regressors will be used in the model and arimax models will be created. 
+
+```{r, warning=FALSE, error=FALSE}
+modelx1=arima(decomposed11$random,order=c(2,0,1),xreg=bik_2$basket_count)
+print(modelx1)
+fittedx1=fitted(modelx1)
+fitted_transformedx1=fittedx1*decomposed11$seasonal*decomposed11$trend
+
+modelx2=arima(decomposed11$random,order=c(2,0,1),xreg=bik_2$visit_count)
+print(modelx2)
+fittedx2=fitted(modelx2)
+fitted_transformedx2=fittedx2*decomposed11$seasonal*decomposed11$trend
+
+
+modelx3=arima(decomposed11$random,order=c(2,0,1),xreg=bik_2$favored_count)
+print(modelx3)
+fittedx3=fitted(modelx3)
+fitted_transformedx3=fittedx3*decomposed11$seasonal*decomposed11$trend
+```
+
+3 models are constructed according to related one of 3 regressors. Now they will be tested for last one week.
+
+```{r}
+accu(ts11,tail(head(fitted_transformed13,31),7)) # arima model
+accu(ts11,tail(head(fitted_transformedx1,31),7)) # arimax1
+accu(ts11,tail(head(fitted_transformedx2,31),7)) # arimax2
+accu(ts11,tail(head(fitted_transformedx3,31),7)) # arimax3
+
+AIC(model13)
+AIC(modelx1)
+AIC(modelx2)
+AIC(modelx3)
+
+```
+
+As it is seen in the results, they all have similar results but model arimax1 is slightly better in terms of lower WMAPE and other parameters. Moreover, model shows better performance with arimax1 (regressor as basket count) than arima model in previous step. 
+
+
+## Final Step
+
+After all of tests and operations done above, arimax1 model gives best results and it is selected as final model.
+
+# Forecasting Part for This Product
+
+Preparing basket count values with moving averages method:
+
+```{r}
+basket1<-tail(bik_1$basket_count,7)
+for (i in 1:26) {
+  basket1<-append(basket1,(basket1[i]+basket1[i+1]+basket1[i+2]+basket1[i+3]+basket1[i+4]+basket1[i+5]+basket1[i+6])/7)
+}
+basket_rounded<-round(basket1)
+basket_rounded
+```
+
+Forecasting results are below:
+
+```{r}
+modelx1=arima(decomposed11$random,order=c(2,0,1),xreg=bik_2$basket_count)
+basket_count_forxreg<-c(tail(bik_2$basket_count,3),basket_rounded[8:33])
+
+preds<-predict(modelx1,n.ahead = 29,newxreg = basket_count_forxreg)$pred
+preds<-ts(preds,frequency = 7)
+last_trend_value <-tail(decomposed11$trend[!is.na(decomposed11$trend)],1)
+seasonality=decomposed11$seasonal[1:28]
+preds=preds*last_trend_value*seasonality/2
+print(preds)
+ts.plot(preds,xlab = "Weeks", ylab="Predictions", main="Forecasts")
+
+```
+
+
+
+# Conclusion and Future Work
+
+During the project, some actions are operated and steps are taken. At the end, forecast values are acquired for related period. However, model for bikini 1 and bikini 2 was ineffective due to limited data. The other predictions are quite acceptable and more realistic with a better model at each. For further extensions or approaches, it would be perfect to use qualitative methods combined to these model results. After presenting model, expert opinion should be taken for new analyses. Additionally, creating confidence intervals for these predictions would give one more information, which is a huge advantage for further analyses. In short, combining these results with confidence intervals and qualitative models is the best technique to forecast.
+
+# Github Link for Codes
+
+[Here](https://github.com/BU-IE-360/spring21-mfdevecii/files/Project/Project.R)
+
+
+
+
+
+
+
+
+
+
+
