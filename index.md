@@ -2,7 +2,7 @@
 
 **-----------------------------------------------------------------------------------------------------------**
 
-[This](https://bu-ie-360.github.io/spring21-mfdevecii/) is my page.
+[This](https://bu-ie-360.github.io/spring21-mfdevecii/) page shows my works on Forecasting and Time Series Analysis Course. During all of these projects, RStudio is utilized for Data Manipulation and Presentation.
 
 ## Homework 0
   
